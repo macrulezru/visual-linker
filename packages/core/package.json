@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/visual-linker-core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Framework-agnostic engine that draws smart, auto-routed SVG connector lines between DOM blocks",
   "license": "MIT",
   "type": "module",
