@@ -34,5 +34,14 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
     },
   },
+  {
+    // Test files commonly define several small inline host components (one
+    // per scenario) in a single .ts file — that's a test-organization choice,
+    // not the multi-component-per-.vue-file smell this rule is meant to catch.
+    files: ['**/test/**/*.ts'],
+    rules: {
+      'vue/one-component-per-file': 'off',
+    },
+  },
   eslintConfigPrettier,
 )

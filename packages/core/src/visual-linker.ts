@@ -1,6 +1,7 @@
 import {
   bezierPath,
   DEFAULT_CURVE_GEOMETRY,
+  projectedSidePoint,
   resolveAutoSide,
   sidePoint,
   straightPath,
@@ -49,10 +50,15 @@ function resolvePort(block: BlockDescriptor, portId?: string): PortDescriptor {
   return port ?? DEFAULT_PORT
 }
 
+/** Resolves a `string | HTMLElement | undefined` field (a CSS selector, a direct element, or "use the block itself"). */
+function resolveWithin(el: HTMLElement, ref: string | HTMLElement | undefined): HTMLElement {
+  if (typeof ref === 'string') return el.querySelector<HTMLElement>(ref) ?? el
+  if (ref instanceof HTMLElement) return ref
+  return el
+}
+
 function portElement(block: BlockDescriptor, port: PortDescriptor): HTMLElement {
-  if (typeof port.target === 'string') return block.el.querySelector<HTMLElement>(port.target) ?? block.el
-  if (port.target instanceof HTMLElement) return port.target
-  return block.el
+  return resolveWithin(block.el, port.target)
 }
 
 function toLocal(point: Point, containerRect: DOMRect): Point {
@@ -156,7 +162,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
 
     const draggable = block.draggable ?? draggableDefault
     if (draggable) {
-      const handle = block.dragHandle ? (block.el.querySelector<HTMLElement>(block.dragHandle) ?? block.el) : block.el
+      const handle = resolveWithin(block.el, block.dragHandle)
       handle.classList.add('vl-draggable')
       handle.style.touchAction = 'none'
 
@@ -214,7 +220,9 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     if (!block) return null
 
     const port = resolvePort(block, endpoint.portId)
-    const rect = portElement(block, port).getBoundingClientRect()
+    const targetRect = portElement(block, port).getBoundingClientRect()
+    const anchorEl = port.anchorEl ?? (port.anchorBlockId ? blocks.get(port.anchorBlockId)?.el : undefined)
+    const rect = anchorEl ? anchorEl.getBoundingClientRect() : targetRect
     const anchorCenter = toLocal({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, containerRect)
 
     const side = Array.isArray(port.side)
@@ -222,7 +230,9 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       : port.side && port.side !== VLFixedSideEnum.AUTO
         ? port.side
         : resolveAutoSide(anchorCenter, towards)
-    const raw = sidePoint(rect, side, port.offset ?? DEFAULT_PORT_OFFSET)
+    const raw = anchorEl
+      ? projectedSidePoint(rect, side, targetRect)
+      : sidePoint(rect, side, port.offset ?? DEFAULT_PORT_OFFSET)
     return { point: toLocal(raw, containerRect), side }
   }
 

@@ -13,8 +13,27 @@ export interface PortDescriptor {
    * to a subset (e.g. `['left', 'right']` to rule out top/bottom exits entirely).
    */
   side?: PortSide | FixedSide[]
-  /** Position along the side, 0..1 (0.5 = center). default 0.5 */
+  /** Position along the side, 0..1 (0.5 = center). Ignored when `anchorBlockId` is set. default 0.5 */
   offset?: number
+  /**
+   * Renders this port's connector point on another registered block's border
+   * instead of `target`'s own — useful when `target` is a child nested well
+   * inside a container (e.g. a row inside a group block) but the connection
+   * should visually leave from the container's own edge instead. The point
+   * still tracks `target`'s actual position, projected onto the anchor
+   * block's border (clamped to it), so siblings anchored to the same block
+   * keep their relative order instead of collapsing to one spot. Side
+   * resolution (including 'auto') is based on the anchor block, not `target`.
+   * Ignored when `anchorEl` is also set.
+   */
+  anchorBlockId?: string
+  /**
+   * Like `anchorBlockId`, but anchors directly to a given element instead of
+   * a registered block's own `el` — for anchoring to an element that isn't
+   * (or isn't yet) one of the engine's registered blocks. Takes precedence
+   * over `anchorBlockId` when both are set.
+   */
+  anchorEl?: HTMLElement
 }
 
 export interface BlockDescriptor {
@@ -24,8 +43,8 @@ export interface BlockDescriptor {
   ports?: PortDescriptor[]
   /** Overrides the instance-level `draggable` option for this block. */
   draggable?: boolean
-  /** CSS selector for the drag handle within `el`. Omitted => the whole block starts a drag. */
-  dragHandle?: string
+  /** CSS selector, or an element inside `el`, for the drag handle. Omitted => the whole block starts a drag. */
+  dragHandle?: string | HTMLElement
 }
 
 export type ConnectionCurve =

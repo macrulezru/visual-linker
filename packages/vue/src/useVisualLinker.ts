@@ -1,15 +1,15 @@
-import { onBeforeUnmount, onMounted, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { onBeforeUnmount, onMounted, shallowRef, toValue, watch, watchEffect, type MaybeRefOrGetter } from 'vue'
 import {
   createVisualLinker,
-  type BlockDescriptor,
   type ConnectionDescriptor,
   type VisualLinker,
   type VisualLinkerOptions,
 } from '@macrulez/visual-linker-core'
 import { visualLinkerDefaults } from './config'
+import { resolveBlocksForCore, type RefFriendlyBlock } from './refPorts'
 
 export interface UseVisualLinkerOptions extends VisualLinkerOptions {
-  blocks?: MaybeRefOrGetter<BlockDescriptor[]>
+  blocks?: MaybeRefOrGetter<RefFriendlyBlock[]>
   connections?: MaybeRefOrGetter<ConnectionDescriptor[]>
 }
 
@@ -27,6 +27,7 @@ export function useVisualLinker(
   options: UseVisualLinkerOptions = {},
 ): UseVisualLinkerReturn {
   const engine = shallowRef<VisualLinker | null>(null)
+  let stopSyncBlocks: (() => void) | null = null
 
   onMounted(() => {
     const el = toValue(container)
@@ -34,26 +35,32 @@ export function useVisualLinker(
 
     // visualLinkerDefaults first, then options on top — see config.ts and
     // VisualLinker.ts for why the merge order matters.
-    engine.value = createVisualLinker(el, {
+    const createdEngine = createVisualLinker(el, {
       ...visualLinkerDefaults,
       ...options,
     })
-    if (options.blocks) engine.value.setBlocks(toValue(options.blocks) ?? [])
-    if (options.connections) engine.value.setConnections(toValue(options.connections) ?? [])
+    engine.value = createdEngine
+
+    // watchEffect (not a plain watch on options.blocks) so that a block/port's
+    // el/target/anchorEl ref — read via toValue() inside resolveBlocksForCore
+    // during this very callback — is itself tracked as a dependency. That
+    // lets a ref that starts out null resolve correctly once its element
+    // mounts, even though the surrounding `blocks` array itself never changes
+    // identity in that case.
+    if (options.blocks) {
+      stopSyncBlocks = watchEffect(() => {
+        createdEngine.setBlocks(resolveBlocksForCore(toValue(options.blocks) ?? []))
+      })
+    }
+    if (options.connections) createdEngine.setConnections(toValue(options.connections) ?? [])
   })
 
   onBeforeUnmount(() => {
+    stopSyncBlocks?.()
     engine.value?.destroy()
     engine.value = null
   })
 
-  if (options.blocks) {
-    watch(
-      () => toValue(options.blocks),
-      (next) => engine.value?.setBlocks(next ?? []),
-      { deep: true },
-    )
-  }
   if (options.connections) {
     watch(
       () => toValue(options.connections),

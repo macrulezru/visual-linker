@@ -144,6 +144,28 @@ export function sidePoint(rect: DOMRect, side: FixedSide, offset: number = DEFAU
 }
 
 /**
+ * Point on `anchorRect`'s edge for the given side, positioned to align with
+ * wherever `targetRect` actually sits along that edge (clamped to the
+ * anchor's own span). Used when a port's connector should visually sit on a
+ * different block's border than the element it's logically attached to
+ * (`PortDescriptor.anchorBlockId`), while still preserving that element's
+ * real position relative to any siblings anchored to the same border.
+ */
+export function projectedSidePoint(anchorRect: DOMRect, side: FixedSide, targetRect: DOMRect): Point {
+  const targetCenter = { x: targetRect.left + targetRect.width / 2, y: targetRect.top + targetRect.height / 2 }
+  switch (side) {
+    case VLFixedSideEnum.TOP:
+      return { x: clamp(targetCenter.x, anchorRect.left, anchorRect.right), y: anchorRect.top }
+    case VLFixedSideEnum.BOTTOM:
+      return { x: clamp(targetCenter.x, anchorRect.left, anchorRect.right), y: anchorRect.top + anchorRect.height }
+    case VLFixedSideEnum.LEFT:
+      return { x: anchorRect.left, y: clamp(targetCenter.y, anchorRect.top, anchorRect.bottom) }
+    case VLFixedSideEnum.RIGHT:
+      return { x: anchorRect.left + anchorRect.width, y: clamp(targetCenter.y, anchorRect.top, anchorRect.bottom) }
+  }
+}
+
+/**
  * Cubic bezier `d` attribute. Control points are pulled out along each
  * endpoint's angle-biased exit direction (see `exitDirection`), so connections
  * sharing one port naturally fan out toward their own target instead of
