@@ -124,6 +124,24 @@ describe('createVisualLinker interactivity', () => {
 
     engine.destroy()
   })
+
+  it('accepts dragHandle as a direct element, not just a CSS selector', () => {
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const handle = document.createElement('div')
+    a.appendChild(handle)
+
+    engine = createVisualLinker(container, { showPorts: false, draggable: true })
+    engine.setBlocks([{ id: 'a', el: a, dragHandle: handle }])
+
+    firePointer(handle, 'pointerdown', { clientX: 10, clientY: 10 })
+    firePointer(handle, 'pointermove', { clientX: 30, clientY: 25 })
+    firePointer(handle, 'pointerup', { clientX: 30, clientY: 25 })
+
+    expect(a.style.transform).toBe('translate(20px, 15px)')
+    expect(handle.classList.contains('vl-draggable')).toBe(true)
+
+    engine.destroy()
+  })
 })
 
 describe('auto-side ports on a child element', () => {
@@ -177,6 +195,142 @@ describe('auto-side ports on a child element', () => {
     // 'right' side of source: x = left + width = 100, y = top + height/2 = 320.
     expect(Number(startX)).toBeCloseTo(100, 0)
     expect(Number(startY)).toBeCloseTo(320, 0)
+
+    engine.destroy()
+  })
+})
+
+describe("anchorBlockId — port renders on another block's border", () => {
+  it("renders the port on the anchor block's edge, at the target element's own position along it", () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const group = document.createElement('div')
+    const row = document.createElement('div')
+    row.setAttribute('data-port', 'row')
+    group.appendChild(row)
+    document.body.appendChild(group)
+    // The group is a wide container; the row inside it is indented and only
+    // spans part of its width — without anchoring, the port would sit on the
+    // row's own (indented) right edge, not the group's outer edge.
+    group.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
+    row.getBoundingClientRect = () => new DOMRect(20, 40, 100, 20) // right edge at x=120, center y=50
+
+    const target = makeBlock('target', { left: 400, top: 0, width: 100, height: 40 })
+
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      {
+        id: 'group',
+        el: group,
+        ports: [{ id: 'p', target: '[data-port="row"]', side: VLFixedSideEnum.RIGHT, anchorBlockId: 'group' }],
+      },
+      { id: 'target', el: target },
+    ])
+    engine.setConnections([{ id: 'c', from: { blockId: 'group', portId: 'p' }, to: { blockId: 'target' } }])
+
+    const d = container.querySelector('path.vl-connection')!.getAttribute('d')!
+    const [, startX, startY] = d.split(' ')
+    // x follows the anchor (group)'s own right edge (200), not the row's (120).
+    expect(Number(startX)).toBeCloseTo(200, 0)
+    // y still follows the row's own actual center, so it doesn't collapse to the group's center.
+    expect(Number(startY)).toBeCloseTo(50, 0)
+
+    engine.destroy()
+  })
+
+  it('keeps siblings anchored to the same border in their own relative order', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const group = document.createElement('div')
+    const rowA = document.createElement('div')
+    const rowB = document.createElement('div')
+    rowA.setAttribute('data-port', 'a')
+    rowB.setAttribute('data-port', 'b')
+    group.append(rowA, rowB)
+    document.body.appendChild(group)
+    group.getBoundingClientRect = () => new DOMRect(0, 0, 200, 200)
+    rowA.getBoundingClientRect = () => new DOMRect(20, 10, 100, 20) // center y=20
+    rowB.getBoundingClientRect = () => new DOMRect(20, 110, 100, 20) // center y=120
+
+    const targetA = makeBlock('targetA', { left: 400, top: 0, width: 100, height: 40 })
+    const targetB = makeBlock('targetB', { left: 400, top: 200, width: 100, height: 40 })
+
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      {
+        id: 'group',
+        el: group,
+        ports: [
+          { id: 'pa', target: '[data-port="a"]', side: VLFixedSideEnum.RIGHT, anchorBlockId: 'group' },
+          { id: 'pb', target: '[data-port="b"]', side: VLFixedSideEnum.RIGHT, anchorBlockId: 'group' },
+        ],
+      },
+      { id: 'targetA', el: targetA },
+      { id: 'targetB', el: targetB },
+    ])
+    engine.setConnections([
+      { id: 'ca', from: { blockId: 'group', portId: 'pa' }, to: { blockId: 'targetA' } },
+      { id: 'cb', from: { blockId: 'group', portId: 'pb' }, to: { blockId: 'targetB' } },
+    ])
+
+    const paths = [...container.querySelectorAll('path.vl-connection')] as SVGPathElement[]
+    const startYOf = (d: string) => Number(d.split(' ')[2])
+    const yA = startYOf(paths[0]!.getAttribute('d')!)
+    const yB = startYOf(paths[1]!.getAttribute('d')!)
+    expect(yA).toBeCloseTo(20, 0)
+    expect(yB).toBeCloseTo(120, 0)
+
+    engine.destroy()
+  })
+})
+
+describe('anchorEl — anchors to an arbitrary element, not just a registered block', () => {
+  it('takes precedence over anchorBlockId, and works for an element with no BlockDescriptor of its own', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const group = document.createElement('div')
+    const row = document.createElement('div')
+    row.setAttribute('data-port', 'row')
+    group.appendChild(row)
+    document.body.appendChild(group)
+    group.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
+    row.getBoundingClientRect = () => new DOMRect(20, 40, 100, 20) // center y=50
+
+    // A plain wrapper element never registered as a block at all — only reachable via anchorEl.
+    const wrapper = document.createElement('div')
+    document.body.appendChild(wrapper)
+    wrapper.getBoundingClientRect = () => new DOMRect(0, 0, 300, 100)
+
+    const target = makeBlock('target', { left: 500, top: 0, width: 100, height: 40 })
+
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      {
+        id: 'group',
+        el: group,
+        // anchorBlockId points at 'group' (right edge 200); anchorEl points at
+        // the unrelated wrapper (right edge 300) and should win.
+        ports: [
+          {
+            id: 'p',
+            target: '[data-port="row"]',
+            side: VLFixedSideEnum.RIGHT,
+            anchorBlockId: 'group',
+            anchorEl: wrapper,
+          },
+        ],
+      },
+      { id: 'target', el: target },
+    ])
+    engine.setConnections([{ id: 'c', from: { blockId: 'group', portId: 'p' }, to: { blockId: 'target' } }])
+
+    const d = container.querySelector('path.vl-connection')!.getAttribute('d')!
+    const [, startX, startY] = d.split(' ')
+    expect(Number(startX)).toBeCloseTo(300, 0)
+    expect(Number(startY)).toBeCloseTo(50, 0)
 
     engine.destroy()
   })

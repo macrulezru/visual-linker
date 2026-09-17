@@ -1,21 +1,21 @@
-import { defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue'
+import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch, watchEffect, type PropType } from 'vue'
 import {
   createVisualLinker,
   type BlockDescriptor,
   type ConnectionDescriptor,
-  type PortDescriptor,
   type VisualLinker as VisualLinkerEngine,
   type VisualLinkerOptions,
 } from '@macrulez/visual-linker-core'
 import { visualLinkerDefaults } from './config'
+import { resolveElement, resolvePortForCore, type RefFriendlyElement, type RefFriendlyPort } from './refPorts'
 
 export interface VisualLinkerBlock {
   id: string
-  ports?: PortDescriptor[]
+  ports?: RefFriendlyPort[]
   /** Overrides the `options.draggable` default for this block. */
   draggable?: boolean
-  /** CSS selector for the drag handle within the block's slot content. */
-  dragHandle?: string
+  /** CSS selector, or a ref/getter to an element within the block's slot content, for the drag handle. */
+  dragHandle?: RefFriendlyElement
 }
 
 /**
@@ -53,23 +53,7 @@ export const VisualLinker = defineComponent({
     const blockEls = new Map<string, HTMLElement>()
     let engine: VisualLinkerEngine | null = null
     let unsubscribes: (() => void)[] = []
-
-    function syncBlocks() {
-      if (!engine) return
-      const descriptors: BlockDescriptor[] = []
-      for (const block of props.blocks) {
-        const el = blockEls.get(block.id)
-        if (el)
-          descriptors.push({
-            id: block.id,
-            el,
-            ports: block.ports,
-            draggable: block.draggable,
-            dragHandle: block.dragHandle,
-          })
-      }
-      engine.setBlocks(descriptors)
-    }
+    let stopSyncBlocks: (() => void) | null = null
 
     onMounted(() => {
       if (!container.value || typeof window === 'undefined') return
@@ -81,7 +65,29 @@ export const VisualLinker = defineComponent({
         ...visualLinkerDefaults,
         ...props.options,
       })
-      syncBlocks()
+
+      // watchEffect (not a plain watch on props.blocks) so that a port's
+      // target/anchorEl ref — read via resolvePortForCore's toValue() calls
+      // during this very callback — is itself tracked as a dependency. That
+      // lets a ref/getter port target that starts out null (its element
+      // hasn't mounted yet) correctly re-sync once it resolves, even though
+      // props.blocks itself never changes identity in that case.
+      stopSyncBlocks = watchEffect(() => {
+        if (!engine) return
+        const descriptors: BlockDescriptor[] = []
+        for (const block of props.blocks) {
+          const el = blockEls.get(block.id)
+          if (el)
+            descriptors.push({
+              id: block.id,
+              el,
+              ports: block.ports?.map(resolvePortForCore),
+              draggable: block.draggable,
+              dragHandle: resolveElement(block.dragHandle),
+            })
+        }
+        engine.setBlocks(descriptors)
+      })
       engine.setConnections(props.connections)
 
       unsubscribes = [
@@ -97,6 +103,7 @@ export const VisualLinker = defineComponent({
     })
 
     onBeforeUnmount(() => {
+      stopSyncBlocks?.()
       for (const unsubscribe of unsubscribes) unsubscribe()
       engine?.destroy()
     })
@@ -104,13 +111,6 @@ export const VisualLinker = defineComponent({
     watch(
       () => props.connections,
       (next) => engine?.setConnections(next),
-      { deep: true },
-    )
-    watch(
-      () => props.blocks,
-      () => {
-        nextTick(() => syncBlocks())
-      },
       { deep: true },
     )
 

@@ -13,6 +13,17 @@ const simpleBlocks = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b17', 'b18', 'b19', '
 
 const lastEvent = ref('—')
 
+// Template refs for Block 13's own root, its drag handle, and its three rows
+// — passed directly as `dragHandle`/`anchorEl`/`target` below instead of a
+// data-attribute + CSS selector. Each starts out null and resolves once its
+// element mounts; the block/port config re-syncs automatically when that
+// happens (see VisualLinker.ts's watchEffect).
+const groupRef = ref<HTMLElement | null>(null)
+const groupTitleRef = ref<HTMLElement | null>(null)
+const row14Ref = ref<HTMLElement | null>(null)
+const row15Ref = ref<HTMLElement | null>(null)
+const row16Ref = ref<HTMLElement | null>(null)
+
 const blocks: VisualLinkerBlock[] = [
   { id: 'b1' },
   { id: 'b2' },
@@ -25,11 +36,13 @@ const blocks: VisualLinkerBlock[] = [
   {
     id: 'b13',
     draggable: true,
-    dragHandle: '.group-title',
+    dragHandle: groupTitleRef,
+    // anchorEl: the connector points sit on the group's own border (not each
+    // row's own indented edge), while still tracking each row's real height.
     ports: [
-      { id: 'p14', target: '[data-port="14"]', side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT] },
-      { id: 'p15', target: '[data-port="15"]', side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT] },
-      { id: 'p16', target: '[data-port="16"]', side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT] },
+      { id: 'p14', target: row14Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
+      { id: 'p15', target: row15Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
+      { id: 'p16', target: row16Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
     ],
   },
   { id: 'b17' },
@@ -138,11 +151,11 @@ function label(id: string) {
       </template>
 
       <template #block-b13>
-        <div class="card group">
-          <div class="group-title">Block 13 (drag handle)</div>
-          <div class="sub" data-port="14">Block 14</div>
-          <div class="sub" data-port="15">Block 15</div>
-          <div class="sub" data-port="16">Block 16</div>
+        <div ref="groupRef" class="card group">
+          <div ref="groupTitleRef" class="group-title">Block 13 (drag handle)</div>
+          <div ref="row14Ref" class="sub">Block 14</div>
+          <div ref="row15Ref" class="sub">Block 15</div>
+          <div ref="row16Ref" class="sub">Block 16</div>
         </div>
       </template>
     </VisualLinker>

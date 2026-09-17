@@ -7,6 +7,8 @@ export type { UseVisualLinkerOptions, UseVisualLinkerReturn } from './useVisualL
 export { setVisualLinkerDefaults, visualLinkerDefaults } from './config'
 export type { VisualLinkerDefaults } from './config'
 
+export type { RefFriendlyBlock, RefFriendlyPort } from './refPorts'
+
 // Every @macrulez/visual-linker-core export is re-exported here too, so
 // installing just @macrulez/visual-linker-vue reaches the framework-agnostic
 // layer directly, without a separate dependency on @macrulez/visual-linker-core.
