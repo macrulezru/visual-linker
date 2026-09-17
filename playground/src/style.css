@@ -1,0 +1,117 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 40px;
+  background: #ffffff;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 500;
+  color: #666;
+  margin: 0 0 8px;
+}
+
+.event-log {
+  font-size: 12px;
+  font-family: monospace;
+  color: #2e8b57;
+  margin: 0 0 24px;
+}
+
+.vl-container {
+  display: grid;
+  grid-template-columns: repeat(4, 180px);
+  grid-auto-rows: 90px;
+  gap: 24px 50px;
+  grid-template-areas:
+    'b1  b3  .   .'
+    'b2  b4  b5  b6'
+    '.   .   .   .'
+    'b13 b17 .   .'
+    'b13 b18 .   .'
+    'b13 b19 .   .'
+    'b13 b20 .   .'
+    'b13 b21 .   .';
+}
+
+.vl-block:nth-child(1) {
+  grid-area: b1;
+}
+.vl-block:nth-child(2) {
+  grid-area: b2;
+}
+.vl-block:nth-child(3) {
+  grid-area: b3;
+}
+.vl-block:nth-child(4) {
+  grid-area: b4;
+}
+.vl-block:nth-child(5) {
+  grid-area: b5;
+}
+.vl-block:nth-child(6) {
+  grid-area: b6;
+}
+.vl-block:nth-child(7) {
+  grid-area: b13;
+}
+.vl-block:nth-child(8) {
+  grid-area: b17;
+}
+.vl-block:nth-child(9) {
+  grid-area: b18;
+}
+.vl-block:nth-child(10) {
+  grid-area: b19;
+}
+.vl-block:nth-child(11) {
+  grid-area: b20;
+}
+.vl-block:nth-child(12) {
+  grid-area: b21;
+}
+
+.card {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e2e2;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+}
+
+.card.group {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 12px;
+  gap: 8px;
+  background: #dcdcdc;
+}
+
+.group-title {
+  text-align: center;
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.sub {
+  background: #fbf3ef;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  text-align: center;
+  color: #333;
+}
