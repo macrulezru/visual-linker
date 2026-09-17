@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/visual-linker-nuxt",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Nuxt module wrapping @macrulez/visual-linker-vue: auto-imported <VisualLinker> and useVisualLinker, module options for default curve/port rendering",
   "license": "MIT",
   "type": "module",

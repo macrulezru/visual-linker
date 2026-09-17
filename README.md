@@ -12,9 +12,6 @@ position; this only measures it and draws the lines.
 | [`@macrulez/visual-linker-vue`](packages/vue)   | `<VisualLinker>` component (slot-per-block) and `useVisualLinker()` composable — plus every core export, re-exported. |
 | [`@macrulez/visual-linker-nuxt`](packages/nuxt) | Nuxt module auto-importing `<VisualLinker>`/`useVisualLinker`, with module options for default curve/port rendering.  |
 
-See [docs/TECH_SPEC.md](docs/TECH_SPEC.md) for the full design (data model,
-routing algorithm, roadmap).
-
 ## Status
 
 Overlay mode (you position blocks, the engine draws the connections) is
