@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { computeBranchInfo, orthogonalPoints, roundedPolylinePath, smoothstepPath } from '../src/orthogonal'
+import {
+  computeBranchInfo,
+  orthogonalPoints,
+  polylineMidpoint,
+  polylineTangentAngles,
+  roundedPolylinePath,
+  smoothstepPath,
+} from '../src/orthogonal'
 import { VLFixedSideEnum } from '../src/enums'
 import type { FixedSide } from '../src/types'
 
@@ -277,5 +284,47 @@ describe('smoothstepPath', () => {
     )
     // From (0,0) down to the shared branch point (0,50), then right+down into (80,120).
     expect(d).toBe('M 0 0 L 0 50 L 80 50 L 80 120')
+  })
+})
+
+describe('polylineMidpoint', () => {
+  it('returns the exact midpoint of a single straight segment', () => {
+    expect(
+      polylineMidpoint([
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ]),
+    ).toEqual({ x: 50, y: 0 })
+  })
+
+  it('picks the point at half the TOTAL arc length across multiple segments, not the middle vertex', () => {
+    // Total length 30 (10 + 20); half (15) falls 5 units into the second segment.
+    const points = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 20 },
+    ]
+    expect(polylineMidpoint(points)).toEqual({ x: 10, y: 5 })
+  })
+
+  it('handles a degenerate single-point polyline', () => {
+    expect(polylineMidpoint([{ x: 5, y: 5 }])).toEqual({ x: 5, y: 5 })
+  })
+})
+
+describe('polylineTangentAngles', () => {
+  it("takes the direction from the first two / last two points, regardless of the path's middle", () => {
+    // Enters heading right (0°), exits heading down (90°) — an "L" bend.
+    const points = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ]
+    expect(polylineTangentAngles(points)).toEqual({ fromAngle: 0, toAngle: 90 })
+  })
+
+  it('returns 0/0 for a degenerate polyline with fewer than 2 points', () => {
+    expect(polylineTangentAngles([{ x: 5, y: 5 }])).toEqual({ fromAngle: 0, toAngle: 0 })
+    expect(polylineTangentAngles([])).toEqual({ fromAngle: 0, toAngle: 0 })
   })
 })

@@ -165,12 +165,29 @@ export function projectedSidePoint(anchorRect: DOMRect, side: FixedSide, targetR
   }
 }
 
+/** Control points shared by `bezierPath` and `bezierMidpoint`, pulled out along each endpoint's angle-biased exit direction (see `exitDirection`). */
+function bezierControlPoints(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  geometry: CurveGeometryOptions,
+) {
+  const distance = Math.max(Math.hypot(to.x - from.x, to.y - from.y), 1)
+  const reach = clamp(distance * geometry.curvature, geometry.minReach, geometry.maxReach)
+  const fromDir = exitDirection(fromSide, from, to, geometry.angleBlend, geometry.maxAngleOffsetRad)
+  const toDir = exitDirection(toSide, to, from, geometry.angleBlend, geometry.maxAngleOffsetRad)
+  return {
+    c1: { x: from.x + fromDir.x * reach, y: from.y + fromDir.y * reach },
+    c2: { x: to.x + toDir.x * reach, y: to.y + toDir.y * reach },
+  }
+}
+
 /**
- * Cubic bezier `d` attribute. Control points are pulled out along each
- * endpoint's angle-biased exit direction (see `exitDirection`), so connections
- * sharing one port naturally fan out toward their own target instead of
- * overlapping past the anchor, and each one leaves/arrives at an angle that
- * favors its actual target over a rigidly perpendicular border crossing.
+ * Cubic bezier `d` attribute. Connections sharing one port naturally fan out
+ * toward their own target instead of overlapping past the anchor, and each
+ * one leaves/arrives at an angle that favors its actual target over a
+ * rigidly perpendicular border crossing.
  */
 export function bezierPath(
   from: Point,
@@ -179,13 +196,47 @@ export function bezierPath(
   toSide: FixedSide,
   geometry: CurveGeometryOptions = DEFAULT_CURVE_GEOMETRY,
 ): string {
-  const distance = Math.max(Math.hypot(to.x - from.x, to.y - from.y), 1)
-  const reach = clamp(distance * geometry.curvature, geometry.minReach, geometry.maxReach)
-  const fromDir = exitDirection(fromSide, from, to, geometry.angleBlend, geometry.maxAngleOffsetRad)
-  const toDir = exitDirection(toSide, to, from, geometry.angleBlend, geometry.maxAngleOffsetRad)
-  const c1 = { x: from.x + fromDir.x * reach, y: from.y + fromDir.y * reach }
-  const c2 = { x: to.x + toDir.x * reach, y: to.y + toDir.y * reach }
+  const { c1, c2 } = bezierControlPoints(from, fromSide, to, toSide, geometry)
   return `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`
+}
+
+/** The point at t=0.5 along the same cubic bezier `bezierPath` would draw — for positioning a label/tooltip along the curve. */
+export function bezierMidpoint(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  geometry: CurveGeometryOptions = DEFAULT_CURVE_GEOMETRY,
+): Point {
+  const { c1, c2 } = bezierControlPoints(from, fromSide, to, toSide, geometry)
+  // B(0.5) = 1/8 P0 + 3/8 P1 + 3/8 P2 + 1/8 P3
+  return { x: (from.x + 3 * c1.x + 3 * c2.x + to.x) / 8, y: (from.y + 3 * c1.y + 3 * c2.y + to.y) / 8 }
+}
+
+/** The angle of `vector`, in degrees (0° = pointing right, 90° = pointing down in screen coordinates). */
+export function angleDeg(vector: Point): number {
+  return (Math.atan2(vector.y, vector.x) * 180) / Math.PI
+}
+
+/**
+ * The direction of travel along the same cubic bezier `bezierPath` would
+ * draw, in degrees, at each end — matching what SVG's `marker-start`/
+ * `marker-end` with `orient="auto"` compute natively, exposed for an HTML
+ * overlay marker (a Vue component, say) to replicate via CSS `rotate()`.
+ */
+export function bezierTangentAngles(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  geometry: CurveGeometryOptions = DEFAULT_CURVE_GEOMETRY,
+): { fromAngle: number; toAngle: number } {
+  const { c1, c2 } = bezierControlPoints(from, fromSide, to, toSide, geometry)
+  // Tangent at t=0 points from `from` toward c1; tangent at t=1 points from c2 toward `to`.
+  return {
+    fromAngle: angleDeg({ x: c1.x - from.x, y: c1.y - from.y }),
+    toAngle: angleDeg({ x: to.x - c2.x, y: to.y - c2.y }),
+  }
 }
 
 export function straightPath(from: Point, to: Point): string {

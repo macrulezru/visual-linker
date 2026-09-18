@@ -1,5 +1,5 @@
-import { toValue, type MaybeRefOrGetter } from 'vue'
-import type { BlockDescriptor, PortDescriptor } from '@macrulez/visual-linker-core'
+import { isRef, toValue, type MaybeRefOrGetter } from 'vue'
+import type { BlockDescriptor, DragBounds, DragBoundsInset, PortDescriptor } from '@macrulez/visual-linker-core'
 
 /** A CSS selector, or an element handed over as a Vue ref/getter/plain HTMLElement. */
 export type RefFriendlyElement = string | MaybeRefOrGetter<HTMLElement | null | undefined>
@@ -7,6 +7,20 @@ export type RefFriendlyElement = string | MaybeRefOrGetter<HTMLElement | null | 
 /** Unwraps a `RefFriendlyElement`, leaving a CSS selector string untouched. */
 export function resolveElement(value: RefFriendlyElement | undefined): string | HTMLElement | undefined {
   return typeof value === 'string' ? value : (toValue(value) ?? undefined)
+}
+
+/** `DragBounds`, with the `HTMLElement` case also accepting a Vue ref/getter — e.g. `dragBounds: fenceRef` for a template ref, alongside the plain `'container'`/inset-object forms. */
+export type RefFriendlyDragBounds = 'container' | RefFriendlyElement | DragBoundsInset
+
+/** Unwraps a `RefFriendlyDragBounds` into the plain `DragBounds` core understands. A CSS-selector string is resolved against `document` (unlike `resolveElement`'s selectors, which are resolved relative to a block's own `el` by core) since drag bounds aren't scoped to any one block. */
+export function resolveDragBoundsForCore(bounds: RefFriendlyDragBounds | undefined): DragBounds | undefined {
+  if (bounds == null) return undefined
+  if (bounds === 'container') return 'container'
+  if (typeof bounds === 'string') return document.querySelector<HTMLElement>(bounds) ?? undefined
+  if (typeof bounds === 'function' || bounds instanceof HTMLElement || isRef(bounds)) {
+    return toValue(bounds) ?? undefined
+  }
+  return bounds
 }
 
 /**
@@ -42,10 +56,11 @@ export function resolvePortForCore(port: RefFriendlyPort): PortDescriptor {
  * flexibility as a port's `target` — pass a template ref directly instead of
  * dereferencing it yourself on every call site.
  */
-export interface RefFriendlyBlock extends Omit<BlockDescriptor, 'el' | 'ports' | 'dragHandle'> {
+export interface RefFriendlyBlock extends Omit<BlockDescriptor, 'el' | 'ports' | 'dragHandle' | 'dragBounds'> {
   el: MaybeRefOrGetter<HTMLElement | null | undefined>
   ports?: RefFriendlyPort[]
   dragHandle?: RefFriendlyElement
+  dragBounds?: RefFriendlyDragBounds
 }
 
 /** Unwraps a `RefFriendlyBlock[]`, dropping any block whose `el` hasn't resolved to an element yet. */
@@ -59,6 +74,7 @@ export function resolveBlocksForCore(blocks: RefFriendlyBlock[]): BlockDescripto
         el,
         ports: block.ports?.map(resolvePortForCore),
         dragHandle: resolveElement(block.dragHandle),
+        dragBounds: resolveDragBoundsForCore(block.dragBounds),
       })
   }
   return descriptors

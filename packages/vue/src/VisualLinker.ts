@@ -1,13 +1,22 @@
-import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch, watchEffect, type PropType } from 'vue'
+import { defineComponent, h, onBeforeUnmount, onMounted, ref, shallowRef, watch, watchEffect, type PropType } from 'vue'
 import {
   createVisualLinker,
   type BlockDescriptor,
   type ConnectionDescriptor,
+  type ConnectionLayout,
+  type PortLayout,
   type VisualLinker as VisualLinkerEngine,
   type VisualLinkerOptions,
 } from '@macrulez/visual-linker-core'
 import { visualLinkerDefaults } from './config'
-import { resolveElement, resolvePortForCore, type RefFriendlyElement, type RefFriendlyPort } from './refPorts'
+import {
+  resolveDragBoundsForCore,
+  resolveElement,
+  resolvePortForCore,
+  type RefFriendlyDragBounds,
+  type RefFriendlyElement,
+  type RefFriendlyPort,
+} from './refPorts'
 
 export interface VisualLinkerBlock {
   id: string
@@ -16,6 +25,8 @@ export interface VisualLinkerBlock {
   draggable?: boolean
   /** CSS selector, or a ref/getter to an element within the block's slot content, for the drag handle. */
   dragHandle?: RefFriendlyElement
+  /** Overrides the `options.dragBounds` default for this block — `'container'`, an inset object, or an element/ref/getter to confine dragging within. */
+  dragBounds?: RefFriendlyDragBounds
 }
 
 /**
@@ -51,6 +62,8 @@ export const VisualLinker = defineComponent({
   setup(props, { slots, emit }) {
     const container = ref<HTMLElement | null>(null)
     const blockEls = new Map<string, HTMLElement>()
+    const connectionLayouts = shallowRef<ConnectionLayout[]>([])
+    const portLayouts = shallowRef<PortLayout[]>([])
     let engine: VisualLinkerEngine | null = null
     let unsubscribes: (() => void)[] = []
     let stopSyncBlocks: (() => void) | null = null
@@ -84,6 +97,7 @@ export const VisualLinker = defineComponent({
               ports: block.ports?.map(resolvePortForCore),
               draggable: block.draggable,
               dragHandle: resolveElement(block.dragHandle),
+              dragBounds: resolveDragBoundsForCore(block.dragBounds),
             })
         }
         engine.setBlocks(descriptors)
@@ -99,6 +113,13 @@ export const VisualLinker = defineComponent({
         engine.on('block:dragend', (payload) => emit('block-dragend', payload)),
         engine.on('block:mouseenter', (payload) => emit('block-mouseenter', payload)),
         engine.on('block:mouseleave', (payload) => emit('block-mouseleave', payload)),
+        // Drives the #connection-label/#port HTML overlay below — fires on
+        // every render (not just interaction), so overlay positions stay in
+        // sync with drag/resize/scroll the same way the SVG paths themselves do.
+        engine.on('layout', ({ connections: layouts, ports }) => {
+          connectionLayouts.value = layouts
+          portLayouts.value = ports
+        }),
       ]
     })
 
@@ -114,24 +135,145 @@ export const VisualLinker = defineComponent({
       { deep: true },
     )
 
-    return () =>
-      h(
-        'div',
-        { ref: container, class: 'vl-container', style: { position: 'relative' } },
-        props.blocks.map((block) =>
-          h(
-            'div',
-            {
-              key: block.id,
-              class: 'vl-block',
-              ref: (el) => {
-                if (el) blockEls.set(block.id, el as HTMLElement)
-                else blockEls.delete(block.id)
-              },
+    return () => {
+      const blockNodes = props.blocks.map((block) =>
+        h(
+          'div',
+          {
+            key: block.id,
+            class: 'vl-block',
+            ref: (el) => {
+              if (el) blockEls.set(block.id, el as HTMLElement)
+              else blockEls.delete(block.id)
             },
-            slots[`block-${block.id}`]?.(),
-          ),
+          },
+          slots[`block-${block.id}`]?.(),
         ),
       )
+
+      // Only built when at least one of these slots is actually used — it's
+      // an HTML overlay sibling to the SVG layer (not inside the SVG:
+      // arbitrary Vue content can't render into an <svg> without a
+      // <foreignObject>'s cross-browser quirks), absolutely positioned in the
+      // exact same local coordinate space the layout event's points already are.
+      const labelSlot = slots['connection-label']
+      const portSlot = slots['port']
+      const markerSlot = slots['marker']
+      const overlayChildren: (ReturnType<typeof h> | null)[] = []
+
+      if (labelSlot) {
+        for (const layout of connectionLayouts.value) {
+          const connection = props.connections.find((candidate) => candidate.id === layout.id)
+          if (!connection) continue
+          overlayChildren.push(
+            h(
+              'div',
+              {
+                key: `label:${layout.id}`,
+                class: 'vl-connection-label',
+                style: {
+                  position: 'absolute',
+                  display: 'flex',
+                  left: `${layout.mid.x}px`,
+                  top: `${layout.mid.y}px`,
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'auto',
+                },
+              },
+              labelSlot({ connection, point: layout.mid, from: layout.from, to: layout.to }),
+            ),
+          )
+        }
+      }
+
+      if (portSlot) {
+        for (const port of portLayouts.value) {
+          overlayChildren.push(
+            h(
+              'div',
+              {
+                key: `port:${port.key}`,
+                class: 'vl-port-slot',
+                style: {
+                  position: 'absolute',
+                  left: `${port.point.x}px`,
+                  top: `${port.point.y}px`,
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'auto',
+                },
+              },
+              portSlot({ blockId: port.blockId, portId: port.portId, point: port.point }),
+            ),
+          )
+        }
+      }
+
+      if (markerSlot) {
+        for (const layout of connectionLayouts.value) {
+          const connection = props.connections.find((candidate) => candidate.id === layout.id)
+          if (!connection) continue
+          // An explicit startMarker/endMarker still wins here too (renders as
+          // the native SVG marker it already was) — the slot only fills in
+          // where no per-connection marker style was set, mirroring the
+          // built-in dot's own suppression rule.
+          if (!connection.style?.startMarker) {
+            overlayChildren.push(
+              h(
+                'div',
+                {
+                  key: `marker:start:${layout.id}`,
+                  class: 'vl-marker',
+                  style: {
+                    position: 'absolute',
+                    left: `${layout.from.x}px`,
+                    top: `${layout.from.y}px`,
+                    transform: `translate(-50%, -50%) rotate(${layout.fromAngle}deg)`,
+                    pointerEvents: 'auto',
+                  },
+                },
+                markerSlot({ connection, position: 'start', point: layout.from, angle: layout.fromAngle }),
+              ),
+            )
+          }
+          if (!connection.style?.endMarker) {
+            overlayChildren.push(
+              h(
+                'div',
+                {
+                  key: `marker:end:${layout.id}`,
+                  class: 'vl-marker',
+                  style: {
+                    position: 'absolute',
+                    left: `${layout.to.x}px`,
+                    top: `${layout.to.y}px`,
+                    transform: `translate(-50%, -50%) rotate(${layout.toAngle}deg)`,
+                    pointerEvents: 'auto',
+                  },
+                },
+                markerSlot({ connection, position: 'end', point: layout.to, angle: layout.toAngle }),
+              ),
+            )
+          }
+        }
+      }
+
+      const overlayNode =
+        overlayChildren.length > 0
+          ? h(
+              'div',
+              {
+                key: '__vl-overlay__',
+                class: 'vl-overlay',
+                style: { position: 'absolute', inset: '0', pointerEvents: 'none' },
+              },
+              overlayChildren,
+            )
+          : null
+
+      return h('div', { ref: container, class: 'vl-container', style: { position: 'relative' } }, [
+        ...blockNodes,
+        overlayNode,
+      ])
+    }
   },
 })

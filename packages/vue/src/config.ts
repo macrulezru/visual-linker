@@ -9,6 +9,15 @@ export type VisualLinkerDefaults = Pick<
   | 'defaultCurveMaxReach'
   | 'defaultCurveAngleBlend'
   | 'defaultCurveAngleMaxOffset'
+  | 'dragGridSize'
+  | 'defaultPortRadius'
+  | 'defaultPortColor'
+  | 'defaultPortStrokeColor'
+  | 'defaultPortStrokeWidth'
+  | 'defaultCircleMarkerSize'
+  | 'defaultSquareMarkerSize'
+  | 'defaultDiamondMarkerSize'
+  | 'defaultArrowMarkerSize'
 >
 
 /**

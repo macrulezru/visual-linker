@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { bezierPath, exitDirection, resolveAutoSide, sidePoint, straightPath } from '../src/geometry'
+import {
+  angleDeg,
+  bezierMidpoint,
+  bezierPath,
+  bezierTangentAngles,
+  exitDirection,
+  resolveAutoSide,
+  sidePoint,
+  straightPath,
+} from '../src/geometry'
 import { VLFixedSideEnum } from '../src/enums'
 
-function angleDeg(vector: { x: number; y: number }): number {
-  return (Math.atan2(vector.y, vector.x) * 180) / Math.PI
+function parseBezier(d: string) {
+  const match = d.match(/^M ([\d.-]+) ([\d.-]+) C ([\d.-]+) ([\d.-]+), ([\d.-]+) ([\d.-]+), ([\d.-]+) ([\d.-]+)$/)!
+  const [, fx, fy, c1x, c1y, c2x, c2y, tx, ty] = match.map(Number)
+  return { from: { x: fx!, y: fy! }, c1: { x: c1x!, y: c1y! }, c2: { x: c2x!, y: c2y! }, to: { x: tx!, y: ty! } }
 }
 
 describe('resolveAutoSide', () => {
@@ -96,5 +107,45 @@ describe('paths', () => {
     const d = bezierPath({ x: 0, y: 0 }, VLFixedSideEnum.RIGHT, { x: 200, y: 0 }, VLFixedSideEnum.LEFT)
     expect(d.startsWith('M 0 0 C')).toBe(true)
     expect(d.endsWith('200 0')).toBe(true)
+  })
+
+  it('bezierMidpoint matches the t=0.5 point of the exact curve bezierPath draws', () => {
+    const from = { x: 0, y: 0 }
+    const to = { x: 200, y: 80 }
+    const d = bezierPath(from, VLFixedSideEnum.RIGHT, to, VLFixedSideEnum.LEFT)
+    const { c1, c2 } = parseBezier(d)
+    const expected = {
+      x: (from.x + 3 * c1.x + 3 * c2.x + to.x) / 8,
+      y: (from.y + 3 * c1.y + 3 * c2.y + to.y) / 8,
+    }
+
+    const mid = bezierMidpoint(from, VLFixedSideEnum.RIGHT, to, VLFixedSideEnum.LEFT)
+    expect(mid.x).toBeCloseTo(expected.x, 5)
+    expect(mid.y).toBeCloseTo(expected.y, 5)
+  })
+
+  it("bezierTangentAngles matches the exact curve's own control-point directions", () => {
+    const from = { x: 0, y: 0 }
+    const to = { x: 200, y: 80 }
+    const d = bezierPath(from, VLFixedSideEnum.RIGHT, to, VLFixedSideEnum.LEFT)
+    const { c1, c2 } = parseBezier(d)
+    const expectedFromAngle = angleDeg({ x: c1.x - from.x, y: c1.y - from.y })
+    const expectedToAngle = angleDeg({ x: to.x - c2.x, y: to.y - c2.y })
+
+    const { fromAngle, toAngle } = bezierTangentAngles(from, VLFixedSideEnum.RIGHT, to, VLFixedSideEnum.LEFT)
+    expect(fromAngle).toBeCloseTo(expectedFromAngle, 5)
+    expect(toAngle).toBeCloseTo(expectedToAngle, 5)
+  })
+
+  it('bezierTangentAngles is 0° at both ends for a perfectly straight-through horizontal case', () => {
+    // RIGHT -> LEFT with the target dead-on: no angle bias needed on either end.
+    const { fromAngle, toAngle } = bezierTangentAngles(
+      { x: 0, y: 0 },
+      VLFixedSideEnum.RIGHT,
+      { x: 200, y: 0 },
+      VLFixedSideEnum.LEFT,
+    )
+    expect(fromAngle).toBeCloseTo(0, 5)
+    expect(toAngle).toBeCloseTo(0, 5)
   })
 })

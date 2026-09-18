@@ -87,6 +87,55 @@ describe('@macrulez/visual-linker-nuxt module', () => {
       defaultCurveMaxReach: undefined,
       defaultCurveAngleBlend: undefined,
       defaultCurveAngleMaxOffset: undefined,
+      dragGridSize: undefined,
+      defaultPortRadius: undefined,
+      defaultPortColor: undefined,
+      defaultPortStrokeColor: undefined,
+      defaultPortStrokeWidth: undefined,
+      defaultCircleMarkerSize: undefined,
+      defaultSquareMarkerSize: undefined,
+      defaultDiamondMarkerSize: undefined,
+      defaultArrowMarkerSize: undefined,
+    })
+  })
+
+  it('forwards dragGridSize under its @macrulez/visual-linker-core name', async () => {
+    const { default: visualLinkerModule } = await import('../src/module')
+    const nuxt = createMockNuxt()
+
+    // @ts-expect-error see above
+    visualLinkerModule({ dragGridSize: 20 }, nuxt)
+
+    expect(nuxt.options.runtimeConfig.public.visualLinker).toMatchObject({ dragGridSize: 20 })
+  })
+
+  it('forwards every default-port-style module option under its @macrulez/visual-linker-core name', async () => {
+    const { default: visualLinkerModule } = await import('../src/module')
+    const nuxt = createMockNuxt()
+
+    // @ts-expect-error see above
+    visualLinkerModule({ portRadius: 6, portColor: 'pink', portStrokeColor: 'purple', portStrokeWidth: 2 }, nuxt)
+
+    expect(nuxt.options.runtimeConfig.public.visualLinker).toMatchObject({
+      defaultPortRadius: 6,
+      defaultPortColor: 'pink',
+      defaultPortStrokeColor: 'purple',
+      defaultPortStrokeWidth: 2,
+    })
+  })
+
+  it('forwards every default-marker-size module option under its @macrulez/visual-linker-core name', async () => {
+    const { default: visualLinkerModule } = await import('../src/module')
+    const nuxt = createMockNuxt()
+
+    // @ts-expect-error see above
+    visualLinkerModule({ circleMarkerSize: 10, squareMarkerSize: 12, diamondMarkerSize: 14, arrowMarkerSize: 16 }, nuxt)
+
+    expect(nuxt.options.runtimeConfig.public.visualLinker).toMatchObject({
+      defaultCircleMarkerSize: 10,
+      defaultSquareMarkerSize: 12,
+      defaultDiamondMarkerSize: 14,
+      defaultArrowMarkerSize: 16,
     })
   })
 

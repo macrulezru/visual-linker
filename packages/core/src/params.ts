@@ -51,10 +51,17 @@ export const DEFAULT_DRAGGABLE = false
 export const DEFAULT_PORT_OFFSET = 0.5
 
 // --- Markers (markers.ts) ---
+// Each has a matching VisualLinkerOptions.defaultXxxMarkerSize field
+// (visual-linker.ts) for an instance-wide override, on top of the existing
+// per-connection MarkerConfig.size.
 
-/** Default marker size for circle/square/diamond, as a multiple of the connection's current stroke width. */
-export const DEFAULT_MARKER_SIZE = 4
-/** Default marker size for 'arrow', as a multiple of the connection's current stroke width — bigger than the dot-like shapes so the direction reads clearly. */
+/** Default marker size for the built-in 'circle' shape, as a multiple of the connection's current stroke width. */
+export const DEFAULT_CIRCLE_MARKER_SIZE = 6
+/** Default marker size for the built-in 'square' shape, as a multiple of the connection's current stroke width. */
+export const DEFAULT_SQUARE_MARKER_SIZE = 6
+/** Default marker size for the built-in 'diamond' shape, as a multiple of the connection's current stroke width. */
+export const DEFAULT_DIAMOND_MARKER_SIZE = 6
+/** Default marker size for 'arrow', as a multiple of the connection's current stroke width. */
 export const DEFAULT_ARROW_MARKER_SIZE = 6
 /** Side length of the square viewBox every built-in marker shape is drawn in. */
 export const MARKER_VIEWBOX = 20
@@ -72,10 +79,14 @@ export const CIRCLE_MARKER_RADIUS = 6
 export const SQUARE_MARKER_INSET = 4
 /** Inset from the viewBox edge for the built-in 'diamond' marker's four points. */
 export const DIAMOND_MARKER_INSET = 2
+/** Outline width, in viewBox units, for a built-in circle/square/diamond marker whose `strokeColor` is set but `strokeWidth` isn't. */
+export const DEFAULT_MARKER_STROKE_WIDTH = 1
 
 // --- SVG default look (svg-layer.ts: DEFAULT_STYLE CSS custom-property fallbacks) ---
 // Each has a matching `--vl-*` CSS variable a consumer can override from outside
-// without touching these — see TECH_SPEC.md §7.
+// without touching these — see TECH_SPEC.md §7. The DEFAULT_PORT_* constants
+// are also each mirrored by a VisualLinkerOptions.defaultPortXxx field
+// (visual-linker.ts), for a typed JS-level override instead of plain CSS.
 
 export const DEFAULT_LINE_COLOR = '#2e8b57'
 export const DEFAULT_LINE_WIDTH = 1.5
@@ -84,6 +95,7 @@ export const ACTIVE_LINE_WIDTH_BUMP = 1.5
 /** Width of the invisible, easier-to-hover stroke laid under every connection's visible line. */
 export const HIT_AREA_STROKE_WIDTH = 16
 export const DEFAULT_PORT_FILL = '#fff'
+export const DEFAULT_PORT_STROKE_COLOR = DEFAULT_LINE_COLOR
 export const DEFAULT_PORT_STROKE_WIDTH = 1.5
 export const DEFAULT_PORT_RADIUS = 4
 /** `stroke-dasharray` applied when a connection's `dashed` (or `hoverStyle.dashed`) is true. */

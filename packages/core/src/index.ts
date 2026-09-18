@@ -17,6 +17,12 @@ export type {
   MarkerConfig,
   ConnectionEndpoint,
   ConnectionDescriptor,
+  ConnectionLayout,
+  PortLayout,
   VisualLinkerOptions,
   VisualLinkerEventMap,
+  DragBounds,
+  DragBoundsInset,
 } from './types'
+
+export type { Point } from './geometry'

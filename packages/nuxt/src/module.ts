@@ -12,6 +12,18 @@ export interface ModuleOptions {
   curveMaxReach?: number
   curveAngleBlend?: number
   curveAngleMaxOffset?: number
+  /** Snaps every draggable block to this px grid while dragging. Falls through to no snapping when unset. */
+  dragGridSize?: number
+  /** Instance-wide look for the built-in port dot — falls through to @macrulez/visual-linker-core's own defaults (params.ts) when unset. */
+  portRadius?: number
+  portColor?: string
+  portStrokeColor?: string
+  portStrokeWidth?: number
+  /** Instance-wide default marker size per built-in shape — falls through to @macrulez/visual-linker-core's own defaults (params.ts) when unset. */
+  circleMarkerSize?: number
+  squareMarkerSize?: number
+  diamondMarkerSize?: number
+  arrowMarkerSize?: number
 }
 
 const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
@@ -38,6 +50,15 @@ const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOpt
       defaultCurveMaxReach: options.curveMaxReach,
       defaultCurveAngleBlend: options.curveAngleBlend,
       defaultCurveAngleMaxOffset: options.curveAngleMaxOffset,
+      dragGridSize: options.dragGridSize,
+      defaultPortRadius: options.portRadius,
+      defaultPortColor: options.portColor,
+      defaultPortStrokeColor: options.portStrokeColor,
+      defaultPortStrokeWidth: options.portStrokeWidth,
+      defaultCircleMarkerSize: options.circleMarkerSize,
+      defaultSquareMarkerSize: options.squareMarkerSize,
+      defaultDiamondMarkerSize: options.diamondMarkerSize,
+      defaultArrowMarkerSize: options.arrowMarkerSize,
     }
 
     // Applies module options on the client only — <VisualLinker>/useVisualLinker

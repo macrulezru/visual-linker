@@ -18,6 +18,7 @@ afterEach(() => {
 function lastSetBlocksCall() {
   return engineMock.setBlocks.mock.calls.at(-1)![0] as {
     dragHandle?: unknown
+    dragBounds?: unknown
     ports?: { target?: unknown; anchorEl?: unknown }[]
   }[]
 }
@@ -119,6 +120,51 @@ describe('ref-friendly target/anchorEl/dragHandle', () => {
 
     expect(handleRef.value).toBeInstanceOf(HTMLElement)
     expect(lastSetBlocksCall()[0]!.dragHandle).toBe(handleRef.value)
+
+    wrapper.unmount()
+  })
+
+  it('resolves dragBounds as a ref to an element', async () => {
+    const fenceRef = ref<HTMLElement | null>(null)
+
+    const Host = defineComponent({
+      setup() {
+        const blocks = [{ id: 'a', draggable: true, dragBounds: fenceRef }, { id: 'fence' }]
+        return () =>
+          h(
+            VisualLinker,
+            { blocks, connections: [] },
+            { 'block-a': () => 'A', 'block-fence': () => h('div', { ref: fenceRef }, 'Fence') },
+          )
+      },
+    })
+
+    const wrapper = mount(Host, { attachTo: document.body })
+    await nextTick()
+
+    expect(fenceRef.value).toBeInstanceOf(HTMLElement)
+    expect(lastSetBlocksCall()[0]!.dragBounds).toBe(fenceRef.value)
+
+    wrapper.unmount()
+  })
+
+  it("passes 'container' and a plain inset object through untouched", async () => {
+    const Host = defineComponent({
+      setup() {
+        const blocks = [
+          { id: 'a', draggable: true, dragBounds: 'container' as const },
+          { id: 'b', draggable: true, dragBounds: { top: 10, left: 10 } },
+        ]
+        return () => h(VisualLinker, { blocks, connections: [] }, { 'block-a': () => 'A', 'block-b': () => 'B' })
+      },
+    })
+
+    const wrapper = mount(Host, { attachTo: document.body })
+    await nextTick()
+
+    const [a, b] = lastSetBlocksCall()
+    expect(a!.dragBounds).toBe('container')
+    expect(b!.dragBounds).toEqual({ top: 10, left: 10 })
 
     wrapper.unmount()
   })

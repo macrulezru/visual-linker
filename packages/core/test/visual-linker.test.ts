@@ -142,6 +142,115 @@ describe('createVisualLinker interactivity', () => {
 
     engine.destroy()
   })
+
+  it('snaps a drag to the absolute page grid (dragGridSize), not the raw pointer delta', () => {
+    // Deliberately off-grid start position (33, 54): the snap target is
+    // computed from the block's absolute page position, not the drag delta.
+    const a = makeBlock('a', { left: 33, top: 54 })
+    engine = createVisualLinker(container, { showPorts: false, draggable: true, dragGridSize: 20 })
+    engine.setBlocks([{ id: 'a', el: a }])
+
+    firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+    // Raw delta (10, 8) -> absolute (43, 62) -> snaps to (40, 60) -> offset (7, 6).
+    firePointer(a, 'pointermove', { clientX: 10, clientY: 8 })
+    firePointer(a, 'pointerup', { clientX: 10, clientY: 8 })
+
+    expect(a.style.transform).toBe('translate(7px, 6px)')
+
+    engine.destroy()
+  })
+
+  it('moves freely (no snapping) when dragGridSize is left unset', () => {
+    const a = makeBlock('a', { left: 33, top: 54 })
+    engine = createVisualLinker(container, { showPorts: false, draggable: true })
+    engine.setBlocks([{ id: 'a', el: a }])
+
+    firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+    firePointer(a, 'pointermove', { clientX: 10, clientY: 8 })
+    firePointer(a, 'pointerup', { clientX: 10, clientY: 8 })
+
+    expect(a.style.transform).toBe('translate(10px, 8px)')
+
+    engine.destroy()
+  })
+
+  describe('dragBounds', () => {
+    it("clamps a drag to the container's own box with dragBounds: 'container'", () => {
+      container.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: 'container' })
+      engine.setBlocks([{ id: 'a', el: a }])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      // Raw delta would push the block's right/bottom edge to 600/500, way past
+      // the container's 200x100 box — clamped so the block's own rect (not
+      // just its top-left corner) stays fully inside: max offset is
+      // (200-100, 100-40) = (100, 60).
+      firePointer(a, 'pointermove', { clientX: 500, clientY: 400 })
+      firePointer(a, 'pointerup', { clientX: 500, clientY: 400 })
+
+      expect(a.style.transform).toBe('translate(100px, 60px)')
+
+      engine.destroy()
+    })
+
+    it('clamps to an arbitrary HTMLElement box, not the container', () => {
+      container.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 1000)
+      const box = document.createElement('div')
+      box.getBoundingClientRect = () => new DOMRect(0, 0, 150, 80)
+      document.body.appendChild(box)
+
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: box })
+      engine.setBlocks([{ id: 'a', el: a }])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 500, clientY: 400 })
+      firePointer(a, 'pointerup', { clientX: 500, clientY: 400 })
+
+      // Clamped to box (150x80), not the much larger container: (150-100, 80-40).
+      expect(a.style.transform).toBe('translate(50px, 40px)')
+
+      engine.destroy()
+    })
+
+    it('shrinks the container box by a DragBoundsInset', () => {
+      container.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+      engine = createVisualLinker(container, {
+        showPorts: false,
+        draggable: true,
+        dragBounds: { left: 10, top: 5, right: 10, bottom: 5 },
+      })
+      engine.setBlocks([{ id: 'a', el: a }])
+
+      // Push toward the top-left first: clamped to the inset box's origin (10, 5).
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: -500, clientY: -500 })
+      firePointer(a, 'pointerup', { clientX: -500, clientY: -500 })
+      expect(a.style.transform).toBe('translate(10px, 5px)')
+
+      engine.destroy()
+    })
+
+    it("a block's own dragBounds overrides the instance-wide default", () => {
+      container.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 1000)
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: 'container' })
+      engine.setBlocks([{ id: 'a', el: a, dragBounds: { left: 0, top: 0, right: 900, bottom: 960 } }])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 5000, clientY: 5000 })
+      firePointer(a, 'pointerup', { clientX: 5000, clientY: 5000 })
+
+      // Per-block inset (900/960 from the right/bottom of a 1000x1000
+      // container) clamps to (100-100, 40-40) = (0, 0) rather than the
+      // instance-wide 'container' default's (900, 960).
+      expect(a.style.transform).toBe('')
+
+      engine.destroy()
+    })
+  })
 })
 
 describe('auto-side ports on a child element', () => {
@@ -364,8 +473,8 @@ describe('connection start/end markers', () => {
     const pathAB = paths.find((p) => p.getAttribute('d')?.startsWith('M 100'))!
     const pathBC = paths.find((p) => p.getAttribute('d')?.startsWith('M 300'))!
 
-    expect(pathAB.style.markerStart).toMatch(/^url\(#vl-marker-\d+\)$/)
-    expect(pathAB.style.markerEnd).toMatch(/^url\(#vl-marker-\d+\)$/)
+    expect(pathAB.style.markerStart).toMatch(/^url\(#vl-marker-\d+-\d+\)$/)
+    expect(pathAB.style.markerEnd).toMatch(/^url\(#vl-marker-\d+-\d+\)$/)
     expect(pathBC.style.markerStart).toBe('')
     // Both connections request the same default-color 'arrow' end marker: one shared def.
     expect(pathAB.style.markerEnd).toBe(pathBC.style.markerEnd)
@@ -418,7 +527,182 @@ describe('connection start/end markers', () => {
 
     // 'a' (start, no explicit marker) still gets its generic dot; 'b' (explicit endMarker) does not.
     expect(container.querySelectorAll('circle.vl-port')).toHaveLength(1)
-    expect(container.querySelector('path.vl-connection')!.style.markerEnd).toMatch(/^url\(#vl-marker-\d+\)$/)
+    expect(container.querySelector('path.vl-connection')!.style.markerEnd).toMatch(/^url\(#vl-marker-\d+-\d+\)$/)
+
+    engine.destroy()
+  })
+
+  it('endMarker: false leaves a bare point — no generic dot, no native marker, no #port layout entry either', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container)
+
+    let lastPorts: unknown[] = []
+    engine.on('layout', ({ ports }) => {
+      lastPorts = ports
+    })
+
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { endMarker: false } }])
+
+    // 'a' (start, no explicit marker) still gets its generic dot; 'b' (endMarker: false) gets neither dot nor marker.
+    expect(container.querySelectorAll('circle.vl-port')).toHaveLength(1)
+    expect(container.querySelector('path.vl-connection')!.style.markerEnd).toBe('')
+    expect(container.querySelectorAll('marker')).toHaveLength(0)
+    // Only 'a' shows up in the layout event's ports — 'b' is excluded, same as a real endMarker would be.
+    expect(lastPorts).toHaveLength(1)
+
+    engine.destroy()
+  })
+
+  it("two simultaneous engines never collide on marker ids, even though each one's own counter starts at 0", () => {
+    // Regression: an SVG `id` is global to the whole document — with two
+    // <VisualLinker>-style instances mounted on the same page (any app with
+    // more than one diagram, or several small demo diagrams side by side),
+    // two per-instance-local counters both starting at 0 used to produce two
+    // real DOM elements both named e.g. "vl-marker-0". A `marker-end:
+    // url(#vl-marker-0)` reference then resolves to whichever element the
+    // browser finds first in document order — so the SECOND instance's
+    // 'square' marker would silently render as the FIRST instance's shape
+    // instead (here: 'circle').
+    const containerA = document.createElement('div')
+    const containerB = document.createElement('div')
+    document.body.append(containerA, containerB)
+
+    const a1 = makeBlock('a1', { left: 0, top: 0 })
+    const b1 = makeBlock('b1', { left: 200, top: 0 })
+    const engineA = createVisualLinker(containerA, { showPorts: false })
+    engineA.setBlocks([
+      { id: 'a1', el: a1 },
+      { id: 'b1', el: b1 },
+    ])
+    engineA.setConnections([
+      { id: 'c', from: { blockId: 'a1' }, to: { blockId: 'b1' }, style: { endMarker: VLMarkerShapeEnum.CIRCLE } },
+    ])
+
+    const a2 = makeBlock('a2', { left: 0, top: 0 })
+    const b2 = makeBlock('b2', { left: 200, top: 0 })
+    const engineB = createVisualLinker(containerB, { showPorts: false })
+    engineB.setBlocks([
+      { id: 'a2', el: a2 },
+      { id: 'b2', el: b2 },
+    ])
+    engineB.setConnections([
+      { id: 'c', from: { blockId: 'a2' }, to: { blockId: 'b2' }, style: { endMarker: VLMarkerShapeEnum.SQUARE } },
+    ])
+
+    const idA = containerA.querySelector('marker')!.id
+    const idB = containerB.querySelector('marker')!.id
+    expect(idA).not.toBe(idB)
+
+    // Resolve each path's actual referenced marker via the whole document
+    // (not scoped to its own container) — this is exactly what the browser's
+    // own url(#...) resolution does, and is what would have caught the bug.
+    function resolvedShapeTag(container: HTMLElement) {
+      const path = container.querySelector('path.vl-connection') as SVGPathElement
+      const match = /url\(["']?#([^)"']+)["']?\)/.exec(path.style.markerEnd)
+      const marker = document.getElementById(match![1]!)!
+      return marker.querySelector('circle, rect, polygon, path')!.tagName
+    }
+    expect(resolvedShapeTag(containerA)).toBe('circle')
+    expect(resolvedShapeTag(containerB)).toBe('rect') // 'square' renders as <rect>
+
+    engineA.destroy()
+    engineB.destroy()
+  })
+})
+
+describe('instance-wide default port dot style', () => {
+  it('leaves the CSS variables unset (falls through to the stylesheet default) when no defaultPortXxx option is given', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const engine = createVisualLinker(container)
+
+    const svg = container.querySelector('svg.vl-svg') as SVGSVGElement
+    expect(svg.style.getPropertyValue('--vl-port-radius')).toBe('')
+    expect(svg.style.getPropertyValue('--vl-port-fill')).toBe('')
+    expect(svg.style.getPropertyValue('--vl-port-stroke-color')).toBe('')
+    expect(svg.style.getPropertyValue('--vl-port-stroke-width')).toBe('')
+
+    engine.destroy()
+  })
+
+  it('sets only the CSS variables an option actually overrides', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const engine = createVisualLinker(container, {
+      defaultPortRadius: 6,
+      defaultPortColor: 'pink',
+      defaultPortStrokeColor: 'purple',
+      defaultPortStrokeWidth: 2,
+    })
+
+    const svg = container.querySelector('svg.vl-svg') as SVGSVGElement
+    expect(svg.style.getPropertyValue('--vl-port-radius')).toBe('6')
+    expect(svg.style.getPropertyValue('--vl-port-fill')).toBe('pink')
+    expect(svg.style.getPropertyValue('--vl-port-stroke-color')).toBe('purple')
+    expect(svg.style.getPropertyValue('--vl-port-stroke-width')).toBe('2')
+
+    engine.destroy()
+  })
+})
+
+describe('instance-wide default marker size, per shape', () => {
+  it('applies defaultSquareMarkerSize/defaultDiamondMarkerSize to markers with no explicit size', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, {
+      showPorts: false,
+      defaultSquareMarkerSize: 12,
+      defaultDiamondMarkerSize: 14,
+    })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([
+      {
+        id: 'ab',
+        from: { blockId: 'a' },
+        to: { blockId: 'b' },
+        style: { startMarker: VLMarkerShapeEnum.SQUARE, endMarker: VLMarkerShapeEnum.DIAMOND },
+      },
+    ])
+
+    const markerWidths = [...container.querySelectorAll('marker')].map((el) => el.getAttribute('markerWidth'))
+    expect(markerWidths.sort()).toEqual(['12', '14'])
+
+    engine.destroy()
+  })
+
+  it('still lets a per-connection MarkerConfig.size win over the instance-wide default', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, { showPorts: false, defaultSquareMarkerSize: 12 })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([
+      {
+        id: 'ab',
+        from: { blockId: 'a' },
+        to: { blockId: 'b' },
+        style: { endMarker: { shape: VLMarkerShapeEnum.SQUARE, size: 99 } },
+      },
+    ])
+
+    expect(container.querySelector('marker')!.getAttribute('markerWidth')).toBe('99')
 
     engine.destroy()
   })
@@ -499,6 +783,70 @@ describe('connection hoverStyle', () => {
     expect(path.style.strokeWidth).toBe('2')
     expect(path.style.strokeDasharray).toBe('')
     expect(path.style.markerEnd).toBe(baseMarkerEnd)
+
+    engine.destroy()
+  })
+
+  it('applies hoverStyle.markerSize to the marker while active, and reverts to the resting size on deactivate', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([
+      {
+        id: 'ab',
+        from: { blockId: 'a' },
+        to: { blockId: 'b' },
+        style: {
+          endMarker: { shape: VLMarkerShapeEnum.ARROW, size: 6 },
+          hoverStyle: { markerSize: 14 },
+        },
+      },
+    ])
+
+    function currentMarkerWidth(): string | null {
+      const path = container.querySelector('path.vl-connection') as SVGPathElement
+      const endId = path.style.markerEnd.slice('url(#'.length, -1)
+      return container.querySelector(`marker#${endId}`)!.getAttribute('markerWidth')
+    }
+
+    expect(currentMarkerWidth()).toBe('6')
+
+    firePointer(a, 'pointerenter')
+    expect(currentMarkerWidth()).toBe('14')
+
+    firePointer(a, 'pointerleave')
+    expect(currentMarkerWidth()).toBe('6')
+
+    engine.destroy()
+  })
+
+  it('does not conjure a marker out of hoverStyle.markerSize alone when no startMarker/endMarker is set', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { hoverStyle: { markerSize: 14 } } },
+    ])
+
+    firePointer(a, 'pointerenter')
+    const path = container.querySelector('path.vl-connection') as SVGPathElement
+    expect(path.style.markerStart).toBe('')
+    expect(path.style.markerEnd).toBe('')
+    expect(container.querySelectorAll('marker')).toHaveLength(0)
 
     engine.destroy()
   })
@@ -753,6 +1101,103 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
 
     const d = container.querySelector('path.vl-connection')!.getAttribute('d')!
     expect(d).toContain('Q') // a rounded corner, not a sharp one
+
+    engine.destroy()
+  })
+})
+
+describe("'layout' event — exposes resolved connection geometry for overlay content", () => {
+  it("fires on every render with each connection's from/to/mid points", () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+    const b = makeBlock('b', { left: 300, top: 0, width: 100, height: 40 })
+    const engine = createVisualLinker(container, { showPorts: false })
+
+    const layouts: { id: string; from: unknown; to: unknown; mid: unknown }[][] = []
+    engine.on('layout', ({ connections }) => layouts.push(connections))
+
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { curve: VLConnectionCurveEnum.STRAIGHT } },
+    ])
+
+    const last = layouts.at(-1)!
+    expect(last).toHaveLength(1)
+    expect(last[0]).toMatchObject({ id: 'ab', from: { x: 100, y: 20 }, to: { x: 300, y: 20 }, mid: { x: 200, y: 20 } })
+
+    engine.destroy()
+  })
+
+  it('recomputes mid on refresh() after a block moves', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const group = makeMovableGroupBlock(0)
+    const target = makeBlock('target', { left: 400, top: 0, width: 100, height: 40 })
+    const engine = createVisualLinker(container, { showPorts: false })
+
+    let lastMid: { x: number; y: number } | undefined
+    engine.on('layout', ({ connections }) => {
+      lastMid = connections.find((c) => c.id === 'c')?.mid
+    })
+
+    engine.setBlocks([
+      { id: 'group', el: group.el },
+      { id: 'target', el: target },
+    ])
+    engine.setConnections([
+      {
+        id: 'c',
+        from: { blockId: 'group' },
+        to: { blockId: 'target' },
+        style: { curve: VLConnectionCurveEnum.STRAIGHT },
+      },
+    ])
+    const midBefore = lastMid
+
+    group.moveTo(1000)
+    engine.refresh()
+
+    expect(lastMid).not.toEqual(midBefore)
+
+    engine.destroy()
+  })
+
+  it('exposes port layouts unconditionally, even with showPorts: false, but excludes endpoints with an explicit marker', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+    const b = makeBlock('b', { left: 300, top: 0, width: 100, height: 40 })
+    const c = makeBlock('c', { left: 300, top: 200, width: 100, height: 40 })
+    const engine = createVisualLinker(container, { showPorts: false })
+
+    let lastPorts: { key: string; blockId: string; portId?: string }[] = []
+    engine.on('layout', ({ ports }) => {
+      lastPorts = ports
+    })
+
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+      { id: 'c', el: c },
+    ])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' } },
+      { id: 'ac', from: { blockId: 'a' }, to: { blockId: 'c' }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
+    ])
+
+    // 'a' is shared by both connections but resolves to the SAME point for
+    // both (same side, same offset) — deduped to one entry despite two edges.
+    // 'b' gets an entry (no marker); 'c' is excluded (explicit endMarker).
+    expect(lastPorts.map((p) => p.blockId).sort()).toEqual(['a', 'b'])
+    // No SVG dot at all with showPorts: false, regardless of the layout data above.
+    expect(container.querySelectorAll('circle.vl-port')).toHaveLength(0)
 
     engine.destroy()
   })

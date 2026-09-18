@@ -1,117 +1,275 @@
+:root {
+  --color-bg: #f4f5fb;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8f9fe;
+  --color-border: #e4e6f2;
+  --color-text: #1c1e2b;
+  --color-text-muted: #6b6f8a;
+  --color-text-faint: #9ca0bd;
+
+  --color-accent: #6d5bf6;
+  --color-accent-dark: #4f3fd6;
+  --color-accent-soft: #ede9fe;
+  --color-success: #1fa97a;
+  --color-danger: #e0526c;
+  --color-warning: #e8a33d;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --shadow-sm: 0 1px 2px rgba(28, 30, 43, 0.06);
+  --shadow-md: 0 8px 24px rgba(28, 30, 43, 0.08);
+  --shadow-lg: 0 16px 40px rgba(28, 30, 43, 0.12);
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  padding: 40px;
-  background: #ffffff;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
+  background: var(--color-bg);
+  background-image:
+    radial-gradient(circle at 10% -10%, rgba(109, 91, 246, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 0%, rgba(31, 169, 122, 0.1), transparent 35%);
+  background-attachment: fixed;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-h1 {
-  font-size: 15px;
-  font-weight: 500;
-  color: #666;
-  margin: 0 0 8px;
+#app {
+  min-height: 100vh;
 }
 
-.event-log {
-  font-size: 12px;
-  font-family: monospace;
-  color: #2e8b57;
-  margin: 0 0 24px;
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.vl-container {
-  display: grid;
-  grid-template-columns: repeat(4, 180px);
-  grid-auto-rows: 90px;
-  gap: 24px 50px;
-  grid-template-areas:
-    'b1  b3  .   .'
-    'b2  b4  b5  b6'
-    '.   .   .   .'
-    'b13 b17 .   .'
-    'b13 b18 .   .'
-    'b13 b19 .   .'
-    'b13 b20 .   .'
-    'b13 b21 .   .';
+p {
+  margin: 0;
 }
 
-.vl-block:nth-child(1) {
-  grid-area: b1;
-}
-.vl-block:nth-child(2) {
-  grid-area: b2;
-}
-.vl-block:nth-child(3) {
-  grid-area: b3;
-}
-.vl-block:nth-child(4) {
-  grid-area: b4;
-}
-.vl-block:nth-child(5) {
-  grid-area: b5;
-}
-.vl-block:nth-child(6) {
-  grid-area: b6;
-}
-.vl-block:nth-child(7) {
-  grid-area: b13;
-}
-.vl-block:nth-child(8) {
-  grid-area: b17;
-}
-.vl-block:nth-child(9) {
-  grid-area: b18;
-}
-.vl-block:nth-child(10) {
-  grid-area: b19;
-}
-.vl-block:nth-child(11) {
-  grid-area: b20;
-}
-.vl-block:nth-child(12) {
-  grid-area: b21;
-}
+/* ---------- Shared "card" surface used by every scene's blocks ---------- */
 
 .card {
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e2e2e2;
-  border-radius: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
   font-size: 13px;
-  color: #333;
+  font-weight: 500;
+  color: var(--color-text);
+  padding: 8px 12px;
+  text-align: center;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
-.card.group {
+/* ---------- Tab navigation ---------- */
+
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  width: fit-content;
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--color-text);
+  background: var(--color-surface-alt);
+}
+
+.tab.is-active {
+  color: #fff;
+  background: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Generic panel / form-control building blocks ---------- */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 20px;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-faint);
+  margin: 0 0 12px;
+}
+
+.field {
+  display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 12px;
-  gap: 8px;
-  background: #dcdcdc;
+  gap: 6px;
+  margin-bottom: 14px;
 }
 
-.group-title {
-  text-align: center;
-  font-size: 13px;
-  color: #333;
-  margin-bottom: 4px;
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.sub {
-  background: #fbf3ef;
-  border-radius: 6px;
-  padding: 10px;
+.field label {
   font-size: 12px;
-  text-align: center;
-  color: #333;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field label .value {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.field select,
+.field input[type='text'] {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.field input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.field input[type='color'] {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.field input[type='checkbox'] {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+}
+
+.toggle-btn {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.toggle-btn.is-on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.code-preview {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  background: #1c1e2b;
+  color: #d7d9f0;
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-preview .k {
+  color: #8fd3ff;
+}
+.code-preview .s {
+  color: #f7c98d;
+}
+.code-preview .n {
+  color: #b8f1c9;
+}
+
+/* ---------- Small shared bits ---------- */
+
+.event-log {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--color-success);
+}
+
+.scene-intro {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-accent-dark);
+  background: var(--color-accent-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
 }
