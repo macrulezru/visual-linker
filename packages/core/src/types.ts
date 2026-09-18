@@ -1,4 +1,5 @@
 import { VLConnectionCurveEnum, VLMarkerShapeEnum, VLFixedSideEnum, VLOrientEnum } from './enums'
+import type { Point } from './geometry'
 
 export type FixedSide = VLFixedSideEnum.TOP | VLFixedSideEnum.RIGHT | VLFixedSideEnum.BOTTOM | VLFixedSideEnum.LEFT
 export type PortSide = FixedSide | VLFixedSideEnum.AUTO
@@ -36,6 +37,28 @@ export interface PortDescriptor {
   anchorEl?: HTMLElement
 }
 
+/** Inset, in px, from each edge of the reference box a `DragBounds` box is measured against — e.g. `{ top: 16 }` shrinks just the top edge by 16px. Unset edges default to 0 (flush with the reference box). */
+export interface DragBoundsInset {
+  top?: number
+  right?: number
+  bottom?: number
+  left?: number
+}
+
+/**
+ * Confines a draggable block's position to a box, clamped so the block's own
+ * rect never leaves it (rather than just its reference point):
+ * - `'container'` — the engine's own container element.
+ * - `HTMLElement` — an arbitrary element's box (e.g. a dedicated drop-zone
+ *   div elsewhere in the layout, not necessarily the container itself).
+ * - `DragBoundsInset` — the container's own box, shrunk by these paddings.
+ *
+ * Set instance-wide via `VisualLinkerOptions.dragBounds`, or per block via
+ * `BlockDescriptor.dragBounds` (wins when both are set). Unset on both =>
+ * unconstrained, the pre-existing behavior.
+ */
+export type DragBounds = 'container' | HTMLElement | DragBoundsInset
+
 export interface BlockDescriptor {
   id: string
   el: HTMLElement
@@ -45,6 +68,8 @@ export interface BlockDescriptor {
   draggable?: boolean
   /** CSS selector, or an element inside `el`, for the drag handle. Omitted => the whole block starts a drag. */
   dragHandle?: string | HTMLElement
+  /** Overrides the instance-level `dragBounds` option for this block. */
+  dragBounds?: DragBounds
 }
 
 export type ConnectionCurve =
@@ -58,8 +83,18 @@ export interface MarkerConfig {
   shape?: MarkerShape
   /** Marker size, as a multiple of the connection's current stroke width (so it scales with a thicker/hovered line). default 4, or 6 for 'arrow' */
   size?: number
-  /** Fill color for a built-in shape. default follows the connection's own `color`. */
+  /** Fill color for a built-in shape (ignored by `'arrow'`, which has no fill — see `strokeColor`). default follows the connection's own `color`. */
   color?: string
+  /**
+   * Outline color for a built-in `'circle'`/`'square'`/`'diamond'` shape —
+   * unset by default (no outline), matching a plain filled marker. Also the
+   * knob behind the built-in port dot's own outline: see
+   * `VisualLinkerOptions.defaultPortStrokeColor` for its instance-wide default.
+   * Has no effect on `'arrow'`, which already uses `color` as its one stroke.
+   */
+  strokeColor?: string
+  /** Outline width, in the marker's own viewBox units (scales with `size` like everything else in the marker). Ignored when `strokeColor` is unset. default 1 */
+  strokeWidth?: number
   /** CSS class added to the marker's root SVG element, for full custom styling via external CSS. */
   className?: string
   /**
@@ -106,10 +141,16 @@ export interface ConnectionStyle {
    * default 48 (or the instance's `defaultMaxTrunkReach`)
    */
   maxTrunkReach?: number
-  /** Marker at the connection's start point. Shorthand for `{ shape }`. */
-  startMarker?: MarkerShape | MarkerConfig
-  /** Marker at the connection's end point — `'arrow'` shows the connection's direction. */
-  endMarker?: MarkerShape | MarkerConfig
+  /**
+   * Marker at the connection's start point. Shorthand for `{ shape }`.
+   * `false` suppresses the built-in port dot at this end WITHOUT drawing any
+   * native marker either, leaving a bare point — for when a Vue `#marker`
+   * slot (or nothing at all) should be the only thing rendered there, instead
+   * of layering under it the way an unset `startMarker` normally would.
+   */
+  startMarker?: MarkerShape | MarkerConfig | false
+  /** Marker at the connection's end point — `'arrow'` shows the connection's direction. `false` behaves like `startMarker: false` (see there). */
+  endMarker?: MarkerShape | MarkerConfig | false
   /**
    * Overrides applied while this connection is hovered or highlighted (see
    * `connection:mouseenter`/hovering an incident block) — each field falls back to
@@ -120,6 +161,14 @@ export interface ConnectionStyle {
     color?: string
     width?: number
     dashed?: boolean
+    /**
+     * Overrides `startMarker`/`endMarker`'s `size` while hovered, on top of
+     * (not instead of) the automatic strokeWidth-linked growth every marker
+     * already gets for free when `width` bumps up the line. Has no effect on
+     * an endpoint with no `startMarker`/`endMarker` set at all (the built-in
+     * port dot doesn't resize on hover).
+     */
+    markerSize?: number
   }
 }
 
@@ -154,8 +203,67 @@ export interface VisualLinkerOptions {
   defaultMaxTrunkReach?: number
   /** Renders a small circle marker at each resolved port. default true */
   showPorts?: boolean
+  /** Instance-wide radius, in px, of the built-in port dot (`showPorts`). default 4 */
+  defaultPortRadius?: number
+  /** Instance-wide fill color of the built-in port dot. default '#fff' */
+  defaultPortColor?: string
+  /** Instance-wide outline color of the built-in port dot. default follows `--vl-line-color` */
+  defaultPortStrokeColor?: string
+  /** Instance-wide outline width, in px, of the built-in port dot. default 1.5 */
+  defaultPortStrokeWidth?: number
+  /**
+   * Instance-wide default for `MarkerConfig.size` on a `'circle'`-shaped
+   * marker (built-in or via the `'circle'` shorthand), overridable per
+   * connection via `startMarker`/`endMarker`. A multiple of the connection's
+   * current stroke width, like `size` itself. default 6
+   */
+  defaultCircleMarkerSize?: number
+  /** Instance-wide default for `MarkerConfig.size` on a `'square'`-shaped marker, overridable per connection. default 6 */
+  defaultSquareMarkerSize?: number
+  /** Instance-wide default for `MarkerConfig.size` on a `'diamond'`-shaped marker, overridable per connection. default 6 */
+  defaultDiamondMarkerSize?: number
+  /** Instance-wide default for `MarkerConfig.size` on an `'arrow'`-shaped marker, overridable per connection. default 6 */
+  defaultArrowMarkerSize?: number
   /** Lets every block be dragged by pointer unless overridden per-block. default false */
   draggable?: boolean
+  /**
+   * Snaps every draggable block's absolute page position to a shared px grid
+   * while dragging (like a design tool's grid), rather than the raw pointer
+   * delta — so blocks moved independently still land on the same lines.
+   * Omitted or 0 disables snapping entirely (free movement). default undefined
+   */
+  dragGridSize?: number
+  /** Instance-wide default for `BlockDescriptor.dragBounds`, overridable per block. default undefined (unconstrained) */
+  dragBounds?: DragBounds
+}
+
+/** A connection's resolved geometry for the current render — for positioning arbitrary overlay content (e.g. a label or a custom marker) without re-deriving the curve math. */
+export interface ConnectionLayout {
+  id: string
+  from: Point
+  to: Point
+  /** The point at the middle of the connection's actual drawn path (curve-aware — not just the from/to midpoint). */
+  mid: Point
+  /** Degrees, direction of travel along the path at `from` — matches what a native SVG `marker-start` with `orient="auto"` would compute. */
+  fromAngle: number
+  /** Degrees, direction of travel along the path arriving at `to` — matches what a native SVG `marker-end` with `orient="auto"` would compute. */
+  toAngle: number
+}
+
+/**
+ * A resolved port's position for the current render — for positioning custom
+ * `#port` slot content instead of (or, with `showPorts`, alongside) the
+ * built-in dot. Excludes any endpoint that has an explicit `startMarker`/
+ * `endMarker`, matching the dot's own suppression rule. Deduped by physical
+ * point rather than `(blockId, portId)`: an `'auto'`-side port can resolve to
+ * a different point per connection, and each distinct point gets its own entry.
+ */
+export interface PortLayout {
+  /** Stable key for list rendering — `{blockId}:{roundedX}:{roundedY}`. */
+  key: string
+  blockId: string
+  portId?: string
+  point: Point
 }
 
 export interface VisualLinkerEventMap {
@@ -167,4 +275,6 @@ export interface VisualLinkerEventMap {
   'connection:click': { connection: ConnectionDescriptor }
   'connection:mouseenter': { connection: ConnectionDescriptor }
   'connection:mouseleave': { connection: ConnectionDescriptor }
+  /** Fired at the end of every render pass with every connection's/port's resolved geometry — drives Vue's HTML overlay for connection labels and custom port content. */
+  layout: { connections: ConnectionLayout[]; ports: PortLayout[] }
 }

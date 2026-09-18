@@ -1,5 +1,8 @@
 import {
+  angleDeg,
+  bezierMidpoint,
   bezierPath,
+  bezierTangentAngles,
   DEFAULT_CURVE_GEOMETRY,
   projectedSidePoint,
   resolveAutoSide,
@@ -8,7 +11,13 @@ import {
   type CurveGeometryOptions,
   type Point,
 } from './geometry'
-import { computeBranchInfo, smoothstepPath } from './orthogonal'
+import {
+  computeBranchInfo,
+  polylineMidpoint,
+  polylineTangentAngles,
+  smoothstepPath,
+  smoothstepPoints,
+} from './orthogonal'
 import { createResizeWatcher } from './resize-watcher'
 import { createSvgLayer } from './svg-layer'
 import {
@@ -24,9 +33,12 @@ import type {
   BlockDescriptor,
   ConnectionDescriptor,
   ConnectionEndpoint,
+  ConnectionLayout,
   ConnectionStyle,
+  DragBounds,
   FixedSide,
   PortDescriptor,
+  PortLayout,
   VisualLinkerEventMap,
   VisualLinkerOptions,
 } from './types'
@@ -69,10 +81,41 @@ function applyDragTransform(el: HTMLElement, offset: Point) {
   el.style.transform = offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : ''
 }
 
+function snapToGrid(value: number, gridSize: number): number {
+  return Math.round(value / gridSize) * gridSize
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+interface Rect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/** Resolves a `DragBounds` value into a live viewport-space rect, or `null` for "unconstrained" — recomputed on every drag move so a resizing/moving bounds element (or the container itself) is tracked live. */
+function resolveDragBoundsRect(bounds: DragBounds | undefined, container: HTMLElement): Rect | null {
+  if (!bounds) return null
+  if (bounds === 'container') return container.getBoundingClientRect()
+  if (bounds instanceof HTMLElement) return bounds.getBoundingClientRect()
+  const rect = container.getBoundingClientRect()
+  return {
+    left: rect.left + (bounds.left ?? 0),
+    top: rect.top + (bounds.top ?? 0),
+    right: rect.right - (bounds.right ?? 0),
+    bottom: rect.bottom - (bounds.bottom ?? 0),
+  }
+}
+
 export function createVisualLinker(container: HTMLElement, options: VisualLinkerOptions = {}): VisualLinker {
   const defaultCurve = options.defaultCurve ?? DEFAULT_CURVE_TYPE
   const showPorts = options.showPorts ?? DEFAULT_SHOW_PORTS
   const draggableDefault = options.draggable ?? DEFAULT_DRAGGABLE
+  const dragGridSize = options.dragGridSize
+  const dragBoundsDefault = options.dragBounds
   const cornerRadiusDefault = options.defaultCornerRadius ?? DEFAULT_CORNER_RADIUS
   const maxTrunkReachDefault = options.defaultMaxTrunkReach ?? DEFAULT_MAX_TRUNK_REACH
   const curveDefaults: CurveGeometryOptions = {
@@ -109,22 +152,37 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     for (const handler of listeners.get(event) ?? []) handler(payload)
   }
 
-  const svg = createSvgLayer(container, {
-    onConnectionEnter(id) {
-      svg.setActiveConnections([id])
-      const connection = connections.get(id)
-      if (connection) emit('connection:mouseenter', { connection })
+  const svg = createSvgLayer(
+    container,
+    {
+      onConnectionEnter(id) {
+        svg.setActiveConnections([id])
+        const connection = connections.get(id)
+        if (connection) emit('connection:mouseenter', { connection })
+      },
+      onConnectionLeave(id) {
+        svg.setActiveConnections([])
+        const connection = connections.get(id)
+        if (connection) emit('connection:mouseleave', { connection })
+      },
+      onConnectionClick(id) {
+        const connection = connections.get(id)
+        if (connection) emit('connection:click', { connection })
+      },
     },
-    onConnectionLeave(id) {
-      svg.setActiveConnections([])
-      const connection = connections.get(id)
-      if (connection) emit('connection:mouseleave', { connection })
+    {
+      radius: options.defaultPortRadius,
+      color: options.defaultPortColor,
+      strokeColor: options.defaultPortStrokeColor,
+      strokeWidth: options.defaultPortStrokeWidth,
     },
-    onConnectionClick(id) {
-      const connection = connections.get(id)
-      if (connection) emit('connection:click', { connection })
+    {
+      circle: options.defaultCircleMarkerSize,
+      square: options.defaultSquareMarkerSize,
+      diamond: options.defaultDiamondMarkerSize,
+      arrow: options.defaultArrowMarkerSize,
     },
-  })
+  )
   const watcher = createResizeWatcher(render)
   watcher.observe(container)
 
@@ -163,6 +221,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     const draggable = block.draggable ?? draggableDefault
     if (draggable) {
       const handle = resolveWithin(block.el, block.dragHandle)
+      const bounds = block.dragBounds ?? dragBoundsDefault
       handle.classList.add('vl-draggable')
       handle.style.touchAction = 'none'
 
@@ -173,15 +232,33 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         const startX = event.clientX
         const startY = event.clientY
         const startOffset = dragOffsets.get(block.id) ?? { x: 0, y: 0 }
+        // The block's own current rect already includes startOffset's transform,
+        // so subtracting it back out gives its untransformed base position —
+        // the fixed point that dragGridSize's absolute grid (and dragBounds'
+        // absolute box) are measured against, regardless of where the block
+        // happened to start out on the page.
+        const startRect = block.el.getBoundingClientRect()
+        const basePosition = { x: startRect.left - startOffset.x, y: startRect.top - startOffset.y }
         if (typeof handle.setPointerCapture === 'function') handle.setPointerCapture(event.pointerId)
         handle.classList.add('vl-dragging')
         emit('block:dragstart', { blockId: block.id })
 
         const onPointerMove = (moveEvent: PointerEvent) => {
-          const next = {
-            x: startOffset.x + (moveEvent.clientX - startX),
-            y: startOffset.y + (moveEvent.clientY - startY),
+          let absX = basePosition.x + startOffset.x + (moveEvent.clientX - startX)
+          let absY = basePosition.y + startOffset.y + (moveEvent.clientY - startY)
+          if (dragGridSize) {
+            absX = snapToGrid(absX, dragGridSize)
+            absY = snapToGrid(absY, dragGridSize)
           }
+          // Resolved live (not once at drag-start) so a bounds element that
+          // itself resizes/moves during the drag (or the container, on a
+          // scroll/resize) is always respected with its current box.
+          const boundsRect = resolveDragBoundsRect(bounds, container)
+          if (boundsRect) {
+            absX = clamp(absX, boundsRect.left, Math.max(boundsRect.left, boundsRect.right - startRect.width))
+            absY = clamp(absY, boundsRect.top, Math.max(boundsRect.top, boundsRect.bottom - startRect.height))
+          }
+          const next = { x: absX - basePosition.x, y: absY - basePosition.y }
           dragOffsets.set(block.id, next)
           applyDragTransform(block.el, next)
           watcher.scheduleNow()
@@ -311,10 +388,13 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
 
     // Pass 3: build the actual paths/port markers now that every branch point is known.
     const paths: { id: string; d: string; style?: ConnectionDescriptor['style'] }[] = []
-    const ports: { key: string; point: Point }[] = []
+    const portLayouts: PortLayout[] = []
     const seenPortKeys = new Set<string>()
+    const connectionLayouts: ConnectionLayout[] = []
 
     for (const { connection, from, to, curve } of resolved) {
+      const fromBranch = fromBranches.get(connection.id)
+      const toBranch = toBranches.get(connection.id)
       const d =
         curve === VLConnectionCurveEnum.STRAIGHT
           ? straightPath(from.point, to.point)
@@ -324,35 +404,57 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
                 from.side,
                 to.point,
                 to.side,
-                fromBranches.get(connection.id),
-                toBranches.get(connection.id),
+                fromBranch,
+                toBranch,
                 connection.style?.cornerRadius ?? cornerRadiusDefault,
               )
             : bezierPath(from.point, from.side, to.point, to.side, resolveCurveGeometry(connection.style))
       paths.push({ id: connection.id, d, style: connection.style })
 
-      if (showPorts) {
-        for (const [endpoint, resolved, hasExplicitMarker] of [
-          [connection.from, from, Boolean(connection.style?.startMarker)],
-          [connection.to, to, Boolean(connection.style?.endMarker)],
-        ] as const) {
-          // An explicit start/endMarker replaces the generic dot for that
-          // connection's endpoint rather than layering under it — otherwise the
-          // default dot (same size/position) visually hides a custom shape.
-          if (hasExplicitMarker) continue
-          // Keyed by the resolved physical point rather than the logical port id:
-          // an 'auto'-side port can resolve to a different side per connection
-          // (e.g. one target below, another far to the right), and each distinct
-          // point earns its own marker — only truly-coincident points collapse.
-          const key = `${endpoint.blockId}:${Math.round(resolved.point.x)}:${Math.round(resolved.point.y)}`
-          if (seenPortKeys.has(key)) continue
-          seenPortKeys.add(key)
-          ports.push({ key, point: resolved.point })
-        }
+      let mid: Point
+      let fromAngle: number
+      let toAngle: number
+      if (curve === VLConnectionCurveEnum.STRAIGHT) {
+        mid = { x: (from.point.x + to.point.x) / 2, y: (from.point.y + to.point.y) / 2 }
+        fromAngle = toAngle = angleDeg({ x: to.point.x - from.point.x, y: to.point.y - from.point.y })
+      } else if (curve === VLConnectionCurveEnum.SMOOTHSTEP) {
+        const points = smoothstepPoints(from.point, from.side, to.point, to.side, fromBranch, toBranch)
+        mid = polylineMidpoint(points)
+        ;({ fromAngle, toAngle } = polylineTangentAngles(points))
+      } else {
+        const geometry = resolveCurveGeometry(connection.style)
+        mid = bezierMidpoint(from.point, from.side, to.point, to.side, geometry)
+        ;({ fromAngle, toAngle } = bezierTangentAngles(from.point, from.side, to.point, to.side, geometry))
+      }
+      connectionLayouts.push({ id: connection.id, from: from.point, to: to.point, mid, fromAngle, toAngle })
+
+      // Computed unconditionally (not gated by showPorts) so a `#port` slot
+      // consumer can render custom content even with the built-in dot off.
+      for (const [endpoint, r, hasExplicitMarker] of [
+        [connection.from, from, connection.style?.startMarker !== undefined],
+        [connection.to, to, connection.style?.endMarker !== undefined],
+      ] as const) {
+        // An explicit start/endMarker replaces the generic dot (and any
+        // `#port` slot content) for that endpoint rather than layering under
+        // it — otherwise the default dot/slot, at the same size/position,
+        // visually hides a custom shape. `startMarker`/`endMarker: false`
+        // counts as "explicit" too, even though it renders no native marker
+        // either — it's the escape hatch for a Vue `#marker` slot to have a
+        // bare point with nothing else drawn on top of or under it.
+        if (hasExplicitMarker) continue
+        // Keyed by the resolved physical point rather than the logical port id:
+        // an 'auto'-side port can resolve to a different side per connection
+        // (e.g. one target below, another far to the right), and each distinct
+        // point earns its own marker — only truly-coincident points collapse.
+        const key = `${endpoint.blockId}:${Math.round(r.point.x)}:${Math.round(r.point.y)}`
+        if (seenPortKeys.has(key)) continue
+        seenPortKeys.add(key)
+        portLayouts.push({ key, blockId: endpoint.blockId, portId: endpoint.portId, point: r.point })
       }
     }
 
-    svg.update(paths, ports)
+    svg.update(paths, showPorts ? portLayouts : [])
+    emit('layout', { connections: connectionLayouts, ports: portLayouts })
   }
 
   return {

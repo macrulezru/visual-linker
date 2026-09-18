@@ -1,6 +1,6 @@
 import { VLFixedSideEnum } from './enums'
 import type { FixedSide } from './types'
-import type { Point } from './geometry'
+import { angleDeg, type Point } from './geometry'
 
 type Axis = 'x' | 'y'
 
@@ -166,20 +166,15 @@ function dedupeConsecutive(points: Point[]): Point[] {
   return result
 }
 
-/**
- * The full `smoothstep` connection path: a shared, rounded trunk-and-branch
- * at each end that has one (per `computeBranchInfo`'s grouping), an ordinary
- * rounded orthogonal connector in between.
- */
-export function smoothstepPath(
+/** The raw (pre-rounding) polyline a `smoothstep` connection follows — shared by `smoothstepPath` and `polylineMidpoint`. */
+export function smoothstepPoints(
   from: Point,
   fromSide: FixedSide,
   to: Point,
   toSide: FixedSide,
   fromBranch: BranchInfo | undefined,
   toBranch: BranchInfo | undefined,
-  cornerRadius: number,
-): string {
+): Point[] {
   const startPoint = fromBranch ? fromBranch.branchPoint : from
   const startSide =
     fromBranch && !fromBranch.isNearest ? perpendicularSideToward(fromSide, fromBranch.branchPoint, to) : fromSide
@@ -194,5 +189,57 @@ export function smoothstepPath(
   if (toBranch) points.push(toBranch.branchPoint)
   points.push(to)
 
-  return roundedPolylinePath(dedupeConsecutive(points), cornerRadius)
+  return dedupeConsecutive(points)
+}
+
+/**
+ * The full `smoothstep` connection path: a shared, rounded trunk-and-branch
+ * at each end that has one (per `computeBranchInfo`'s grouping), an ordinary
+ * rounded orthogonal connector in between.
+ */
+export function smoothstepPath(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  fromBranch: BranchInfo | undefined,
+  toBranch: BranchInfo | undefined,
+  cornerRadius: number,
+): string {
+  return roundedPolylinePath(smoothstepPoints(from, fromSide, to, toSide, fromBranch, toBranch), cornerRadius)
+}
+
+/** The point at half the polyline's total arc length — for positioning a label/tooltip along a `smoothstep` connection. */
+export function polylineMidpoint(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 }
+  if (points.length === 1) return points[0]!
+
+  const segmentLengths = points.slice(1).map((point, i) => Math.hypot(point.x - points[i]!.x, point.y - points[i]!.y))
+  const half = segmentLengths.reduce((sum, length) => sum + length, 0) / 2
+
+  let covered = 0
+  for (let i = 0; i < segmentLengths.length; i++) {
+    const segmentLength = segmentLengths[i]!
+    if (covered + segmentLength >= half || i === segmentLengths.length - 1) {
+      const t = segmentLength > 0 ? (half - covered) / segmentLength : 0
+      const a = points[i]!
+      const b = points[i + 1]!
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+    }
+    covered += segmentLength
+  }
+  return points[points.length - 1]!
+}
+
+/** The direction of travel (degrees) along the first and last segments of a polyline — the `smoothstep` counterpart to `bezierTangentAngles`. */
+export function polylineTangentAngles(points: Point[]): { fromAngle: number; toAngle: number } {
+  if (points.length < 2) return { fromAngle: 0, toAngle: 0 }
+  const first = points[0]!
+  const second = points[1]!
+  const last = points[points.length - 1]!
+  const secondToLast = points[points.length - 2]!
+  return {
+    fromAngle: angleDeg({ x: second.x - first.x, y: second.y - first.y }),
+    toAngle: angleDeg({ x: last.x - secondToLast.x, y: last.y - secondToLast.y }),
+  }
 }

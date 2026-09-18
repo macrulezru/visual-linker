@@ -10,18 +10,49 @@ describe('resolveMarkerConfig', () => {
   it('expands a shorthand shape string', () => {
     expect(resolveMarkerConfig(VLMarkerShapeEnum.DIAMOND, '#000')).toEqual({
       shape: VLMarkerShapeEnum.DIAMOND,
-      size: 4, // default: 4x the connection's current stroke width
+      size: 6, // default: 6x the connection's current stroke width
       color: '#000',
+      strokeColor: undefined, // no outline by default
+      strokeWidth: 1,
       className: undefined,
       svg: undefined,
       orient: VLOrientEnum.FIXED,
     })
   })
 
-  it('sizes the arrow larger by default than the dot-like shapes, both as stroke-width multiples', () => {
+  it('leaves strokeColor unset by default, and resolves an explicit one alongside its own strokeWidth default', () => {
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000')!.strokeColor).toBeUndefined()
+    const resolved = resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, strokeColor: 'blue' }, '#000')!
+    expect(resolved.strokeColor).toBe('blue')
+    expect(resolved.strokeWidth).toBe(1) // default when only strokeColor is given
+  })
+
+  it('lets an explicit strokeWidth override the default', () => {
+    const resolved = resolveMarkerConfig(
+      { shape: VLMarkerShapeEnum.CIRCLE, strokeColor: 'blue', strokeWidth: 3 },
+      '#000',
+    )!
+    expect(resolved.strokeWidth).toBe(3)
+  })
+
+  it('defaults every built-in shape to the same 6x stroke-width multiple', () => {
     expect(resolveMarkerConfig(VLMarkerShapeEnum.ARROW, '#000')!.size).toBe(6)
-    expect(resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000')!.size).toBe(4)
-    expect(resolveMarkerConfig(VLMarkerShapeEnum.SQUARE, '#000')!.size).toBe(4)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000')!.size).toBe(6)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.SQUARE, '#000')!.size).toBe(6)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.DIAMOND, '#000')!.size).toBe(6)
+  })
+
+  it('lets an instance-wide sizeDefaults override each shape independently', () => {
+    const sizeDefaults = { circle: 10, square: 12, diamond: 14, arrow: 16 }
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000', sizeDefaults)!.size).toBe(10)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.SQUARE, '#000', sizeDefaults)!.size).toBe(12)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.DIAMOND, '#000', sizeDefaults)!.size).toBe(14)
+    expect(resolveMarkerConfig(VLMarkerShapeEnum.ARROW, '#000', sizeDefaults)!.size).toBe(16)
+  })
+
+  it('still lets an explicit per-connection size win over the instance-wide default', () => {
+    const resolved = resolveMarkerConfig({ shape: VLMarkerShapeEnum.SQUARE, size: 99 }, '#000', { square: 12 })!
+    expect(resolved.size).toBe(99)
   })
 
   it('defaults the arrow shape to auto orientation', () => {
@@ -99,5 +130,28 @@ describe('createMarkerElement', () => {
       resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, className: 'my-marker' }, '#000')!,
     )
     expect(el.classList.contains('my-marker')).toBe(true)
+  })
+
+  it('adds a stroke to a built-in shape only when strokeColor is set', () => {
+    const plain = createMarkerElement('p', 'end', resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000')!)
+    expect(plain.querySelector('circle')!.getAttribute('stroke')).toBeNull()
+
+    const outlined = createMarkerElement(
+      'o',
+      'end',
+      resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, strokeColor: 'blue', strokeWidth: 2 }, '#000')!,
+    )
+    const circle = outlined.querySelector('circle')!
+    expect(circle.getAttribute('stroke')).toBe('blue')
+    expect(circle.getAttribute('stroke-width')).toBe('2')
+  })
+
+  it('ignores strokeColor for the arrow shape, which already uses color as its one stroke', () => {
+    const el = createMarkerElement(
+      'a',
+      'end',
+      resolveMarkerConfig({ shape: VLMarkerShapeEnum.ARROW, color: 'green', strokeColor: 'blue' }, '#000')!,
+    )
+    expect(el.querySelector('path')!.getAttribute('stroke')).toBe('green')
   })
 })

@@ -1,6 +1,6 @@
 import type { ConnectionStyle } from './types'
 import type { Point } from './geometry'
-import { createMarkerElement, markerSignature, resolveMarkerConfig } from './markers'
+import { createMarkerElement, markerSignature, resolveMarkerConfig, type MarkerSizeDefaults } from './markers'
 import {
   ACTIVE_LINE_WIDTH_BUMP,
   DASH_PATTERN,
@@ -8,11 +8,22 @@ import {
   DEFAULT_LINE_WIDTH,
   DEFAULT_PORT_FILL,
   DEFAULT_PORT_RADIUS,
+  DEFAULT_PORT_STROKE_COLOR,
   DEFAULT_PORT_STROKE_WIDTH,
   HIT_AREA_STROKE_WIDTH,
 } from './params'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+
+// Module-level (not per-instance) so marker ids stay unique across every
+// `<VisualLinker>`/`createVisualLinker()` instance mounted on the same page —
+// an SVG `id` is global to the whole document, and `url(#id)` resolves to
+// whichever element happens to have that id first in document order. Without
+// this, every instance's own marker counter restarts at 0, so a page with
+// several diagrams ends up with multiple `id="vl-marker-0"` elements, and
+// every connection referencing "its own" vl-marker-0 actually renders
+// whichever instance's marker happened to land first in the DOM.
+let svgLayerInstanceCounter = 0
 
 export interface SvgPathInput {
   id: string
@@ -31,6 +42,14 @@ export interface SvgLayerHandlers {
   onConnectionLeave?: (id: string, event: PointerEvent) => void
 }
 
+/** Instance-wide look for the built-in port dot — see `VisualLinkerOptions.defaultPortXxx`. Each field left unset keeps that CSS variable's own params.ts-sourced fallback, so plain external CSS overrides still work undisturbed. */
+export interface DefaultPortStyle {
+  radius?: number
+  color?: string
+  strokeColor?: string
+  strokeWidth?: number
+}
+
 // One shared default look via CSS variables, so consumers can restyle every
 // connection/port from the outside without fighting inline-style specificity —
 // per-connection ConnectionStyle overrides below are set inline instead,
@@ -42,12 +61,19 @@ const DEFAULT_STYLE = `
   .vl-connection { fill: none; stroke: var(--vl-line-color, ${DEFAULT_LINE_COLOR}); stroke-width: var(--vl-line-width, ${DEFAULT_LINE_WIDTH}); }
   .vl-connection--active { stroke: var(--vl-line-color-active, var(--vl-line-color, ${DEFAULT_LINE_COLOR})); stroke-width: calc(var(--vl-line-width, ${DEFAULT_LINE_WIDTH}) + ${ACTIVE_LINE_WIDTH_BUMP}); }
   .vl-connection-hit { fill: none; stroke: transparent; stroke-width: ${HIT_AREA_STROKE_WIDTH}; pointer-events: stroke; cursor: pointer; }
-  .vl-port { fill: var(--vl-port-fill, ${DEFAULT_PORT_FILL}); stroke: var(--vl-port-color, ${DEFAULT_LINE_COLOR}); stroke-width: var(--vl-port-stroke-width, ${DEFAULT_PORT_STROKE_WIDTH}); r: var(--vl-port-radius, ${DEFAULT_PORT_RADIUS}); }
+  .vl-port { fill: var(--vl-port-fill, ${DEFAULT_PORT_FILL}); stroke: var(--vl-port-stroke-color, ${DEFAULT_PORT_STROKE_COLOR}); stroke-width: var(--vl-port-stroke-width, ${DEFAULT_PORT_STROKE_WIDTH}); r: var(--vl-port-radius, ${DEFAULT_PORT_RADIUS}); }
   .vl-draggable { cursor: grab; }
   .vl-dragging { cursor: grabbing; }
 `
 
-export function createSvgLayer(container: HTMLElement, handlers: SvgLayerHandlers = {}) {
+export function createSvgLayer(
+  container: HTMLElement,
+  handlers: SvgLayerHandlers = {},
+  defaultPortStyle: DefaultPortStyle = {},
+  markerSizeDefaults: MarkerSizeDefaults = {},
+) {
+  const instanceId = svgLayerInstanceCounter++
+
   if (getComputedStyle(container).position === 'static') {
     container.style.position = 'relative'
   }
@@ -58,6 +84,15 @@ export function createSvgLayer(container: HTMLElement, handlers: SvgLayerHandler
   svg.style.inset = '0'
   svg.style.overflow = 'visible'
   svg.style.pointerEvents = 'none'
+  // Only ever set when the caller actually passed a value — leaving a field
+  // unset here means the CSS variable's own fallback (above) still applies,
+  // so restyling everything via a plain external stylesheet keeps working.
+  if (defaultPortStyle.radius != null) svg.style.setProperty('--vl-port-radius', String(defaultPortStyle.radius))
+  if (defaultPortStyle.color != null) svg.style.setProperty('--vl-port-fill', defaultPortStyle.color)
+  if (defaultPortStyle.strokeColor != null)
+    svg.style.setProperty('--vl-port-stroke-color', defaultPortStyle.strokeColor)
+  if (defaultPortStyle.strokeWidth != null)
+    svg.style.setProperty('--vl-port-stroke-width', String(defaultPortStyle.strokeWidth))
 
   const style = document.createElementNS(SVG_NS, 'style')
   style.textContent = DEFAULT_STYLE
@@ -84,17 +119,27 @@ export function createSvgLayer(container: HTMLElement, handlers: SvgLayerHandler
     config: ConnectionStyle['startMarker'],
     fallbackColor: string,
   ): string | null {
-    const resolved = resolveMarkerConfig(config, fallbackColor)
+    const resolved = resolveMarkerConfig(config, fallbackColor, markerSizeDefaults)
     if (!resolved) return null
     const signature = markerSignature(position, resolved)
     usedMarkerSignatures.add(signature)
     let el = markerDefs.get(signature)
     if (!el) {
-      el = createMarkerElement(`vl-marker-${markerIdCounter++}`, position, resolved)
+      el = createMarkerElement(`vl-marker-${instanceId}-${markerIdCounter++}`, position, resolved)
       defs.appendChild(el)
       markerDefs.set(signature, el)
     }
     return el.id
+  }
+
+  /** Overrides a marker config's `size` while hovered — a no-op for `false`/unset config or an unset `markerSize`, so it never turns a bare/hidden endpoint into a marker. */
+  function withHoverMarkerSize(
+    config: ConnectionStyle['startMarker'],
+    markerSize: number | undefined,
+  ): ConnectionStyle['startMarker'] {
+    if (markerSize == null || !config) return config
+    const base = typeof config === 'string' ? { shape: config } : config
+    return { ...base, size: markerSize }
   }
 
   /**
@@ -102,8 +147,8 @@ export function createSvgLayer(container: HTMLElement, handlers: SvgLayerHandler
    * `hoverStyle`, `active` only toggles the `.vl-connection--active` class —
    * the CSS-driven width bump — leaving stroke/marker color untouched, exactly
    * as before this existed. With `hoverStyle`, each given field (color/width/
-   * dashed) overrides the base value while active, and the markers are
-   * recolored to match so the arrow doesn't fall out of sync with the line.
+   * dashed/markerSize) overrides the base value while active, and the markers
+   * are recolored to match so the arrow doesn't fall out of sync with the line.
    */
   function applyConnectionAppearance(el: SVGPathElement, style: ConnectionStyle | undefined, active: boolean) {
     const hover = active ? style?.hoverStyle : undefined
@@ -115,8 +160,16 @@ export function createSvgLayer(container: HTMLElement, handlers: SvgLayerHandler
     el.style.strokeWidth = width != null ? String(width) : ''
     el.style.strokeDasharray = dashed ? DASH_PATTERN : ''
 
-    const startMarkerId = ensureMarker('start', style?.startMarker, color ?? DEFAULT_LINE_COLOR)
-    const endMarkerId = ensureMarker('end', style?.endMarker, color ?? DEFAULT_LINE_COLOR)
+    const startMarkerId = ensureMarker(
+      'start',
+      withHoverMarkerSize(style?.startMarker, hover?.markerSize),
+      color ?? DEFAULT_LINE_COLOR,
+    )
+    const endMarkerId = ensureMarker(
+      'end',
+      withHoverMarkerSize(style?.endMarker, hover?.markerSize),
+      color ?? DEFAULT_LINE_COLOR,
+    )
     el.style.markerStart = startMarkerId ? `url(#${startMarkerId})` : ''
     el.style.markerEnd = endMarkerId ? `url(#${endMarkerId})` : ''
   }
