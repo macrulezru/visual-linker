@@ -120,7 +120,7 @@ describe('createVisualLinker interactivity', () => {
     firePointer(a, 'pointerup', { clientX: 30, clientY: 25 })
 
     expect(events).toEqual(['start', 'drag:20,15', 'end'])
-    expect(a.style.transform).toBe('translate(20px, 15px)')
+    expect(a.style.translate).toBe('20px 15px')
 
     engine.destroy()
   })
@@ -137,7 +137,7 @@ describe('createVisualLinker interactivity', () => {
     firePointer(handle, 'pointermove', { clientX: 30, clientY: 25 })
     firePointer(handle, 'pointerup', { clientX: 30, clientY: 25 })
 
-    expect(a.style.transform).toBe('translate(20px, 15px)')
+    expect(a.style.translate).toBe('20px 15px')
     expect(handle.classList.contains('vl-draggable')).toBe(true)
 
     engine.destroy()
@@ -155,7 +155,7 @@ describe('createVisualLinker interactivity', () => {
     firePointer(a, 'pointermove', { clientX: 10, clientY: 8 })
     firePointer(a, 'pointerup', { clientX: 10, clientY: 8 })
 
-    expect(a.style.transform).toBe('translate(7px, 6px)')
+    expect(a.style.translate).toBe('7px 6px')
 
     engine.destroy()
   })
@@ -169,7 +169,7 @@ describe('createVisualLinker interactivity', () => {
     firePointer(a, 'pointermove', { clientX: 10, clientY: 8 })
     firePointer(a, 'pointerup', { clientX: 10, clientY: 8 })
 
-    expect(a.style.transform).toBe('translate(10px, 8px)')
+    expect(a.style.translate).toBe('10px 8px')
 
     engine.destroy()
   })
@@ -189,7 +189,7 @@ describe('createVisualLinker interactivity', () => {
       firePointer(a, 'pointermove', { clientX: 500, clientY: 400 })
       firePointer(a, 'pointerup', { clientX: 500, clientY: 400 })
 
-      expect(a.style.transform).toBe('translate(100px, 60px)')
+      expect(a.style.translate).toBe('100px 60px')
 
       engine.destroy()
     })
@@ -209,7 +209,7 @@ describe('createVisualLinker interactivity', () => {
       firePointer(a, 'pointerup', { clientX: 500, clientY: 400 })
 
       // Clamped to box (150x80), not the much larger container: (150-100, 80-40).
-      expect(a.style.transform).toBe('translate(50px, 40px)')
+      expect(a.style.translate).toBe('50px 40px')
 
       engine.destroy()
     })
@@ -228,7 +228,7 @@ describe('createVisualLinker interactivity', () => {
       firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
       firePointer(a, 'pointermove', { clientX: -500, clientY: -500 })
       firePointer(a, 'pointerup', { clientX: -500, clientY: -500 })
-      expect(a.style.transform).toBe('translate(10px, 5px)')
+      expect(a.style.translate).toBe('10px 5px')
 
       engine.destroy()
     })
@@ -246,7 +246,7 @@ describe('createVisualLinker interactivity', () => {
       // Per-block inset (900/960 from the right/bottom of a 1000x1000
       // container) clamps to (100-100, 40-40) = (0, 0) rather than the
       // instance-wide 'container' default's (900, 960).
-      expect(a.style.transform).toBe('')
+      expect(a.style.translate).toBe('')
 
       engine.destroy()
     })
@@ -740,6 +740,31 @@ describe('connection hoverStyle', () => {
     engine.destroy()
   })
 
+  it('still bumps the width while active when the connection has an explicit (inline) width', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { width: 2 } }])
+
+    const path = container.querySelector('path.vl-connection') as SVGPathElement
+    expect(path.style.strokeWidth).toBe('2')
+
+    firePointer(a, 'pointerenter')
+    expect(Number(path.style.strokeWidth)).toBeGreaterThan(2)
+
+    firePointer(a, 'pointerleave')
+    expect(path.style.strokeWidth).toBe('2')
+
+    engine.destroy()
+  })
+
   it('applies hoverStyle color/width/dashed while active, and reverts on deactivate', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -1198,6 +1223,78 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
     expect(lastPorts.map((p) => p.blockId).sort()).toEqual(['a', 'b'])
     // No SVG dot at all with showPorts: false, regardless of the layout data above.
     expect(container.querySelectorAll('circle.vl-port')).toHaveLength(0)
+
+    engine.destroy()
+  })
+})
+
+describe('markers on endpoints shared with a highlighted connection', () => {
+  const dot = { shape: VLMarkerShapeEnum.CIRCLE, color: '#fff', strokeColor: '#00f', strokeWidth: 2 }
+  const style = { startMarker: dot, endMarker: { ...dot, arrow: true }, hoverStyle: { markerSize: 10 } }
+
+  it("hides only the siblings' markers on the shared end, keeps their lines and their other end", () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const a = makeBlock('a', { left: 0, top: 0, right: 100, bottom: 40 })
+    const b = makeBlock('b', { left: 0, top: 100, right: 100, bottom: 140 })
+    const c = makeBlock('c', { left: 0, top: 200, right: 100, bottom: 240 })
+    const g = makeBlock('g', { left: 400, top: 100, right: 500, bottom: 140 })
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+      { id: 'c', el: c },
+      { id: 'g', el: g, ports: [{ id: 'in', side: VLFixedSideEnum.LEFT }] },
+    ])
+    engine.setConnections(
+      ['a', 'b', 'c'].map((from) => ({
+        id: `${from}g`,
+        from: { blockId: from },
+        to: { blockId: 'g', portId: 'in' },
+        style,
+      })),
+    )
+    const [ag, bg, cg] = [...container.querySelectorAll('path.vl-connection')] as SVGPathElement[]
+
+    firePointer(a, 'pointerenter')
+    expect(ag!.style.markerEnd).not.toBe('')
+    for (const sibling of [bg!, cg!]) {
+      expect(sibling.style.markerEnd).toBe('') // shared point on g: hidden
+      expect(sibling.style.markerStart).not.toBe('') // its own point on b/c: kept
+      expect(sibling.isConnected).toBe(true) // the line itself stays
+    }
+    // The highlighted line is painted after its siblings, so their lines never cross over its enlarged marker.
+    expect(bg!.compareDocumentPosition(ag!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    firePointer(a, 'pointerleave')
+    expect(bg!.style.markerEnd).not.toBe('')
+    expect(cg!.style.markerEnd).not.toBe('')
+
+    engine.destroy()
+  })
+
+  it('applies the same rule on a shared start point when a single line is hovered', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const a = makeBlock('a', { left: 0, top: 100, right: 100, bottom: 140 })
+    const g = makeBlock('g', { left: 400, top: 0, right: 500, bottom: 40 })
+    const h = makeBlock('h', { left: 400, top: 200, right: 500, bottom: 240 })
+    const engine = createVisualLinker(container, { showPorts: false })
+    engine.setBlocks([
+      { id: 'a', el: a, ports: [{ id: 'out', side: VLFixedSideEnum.RIGHT }] },
+      { id: 'g', el: g },
+      { id: 'h', el: h },
+    ])
+    engine.setConnections(
+      ['g', 'h'].map((to) => ({ id: `a${to}`, from: { blockId: 'a', portId: 'out' }, to: { blockId: to }, style })),
+    )
+    const [ag, ah] = [...container.querySelectorAll('path.vl-connection')] as SVGPathElement[]
+    const [agHit] = [...container.querySelectorAll('path.vl-connection-hit')] as SVGPathElement[]
+
+    firePointer(agHit!, 'pointerenter')
+    expect(ag!.style.markerStart).not.toBe('')
+    expect(ah!.style.markerStart).toBe('')
+    expect(ah!.style.markerEnd).not.toBe('')
 
     engine.destroy()
   })

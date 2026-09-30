@@ -12,8 +12,6 @@ import {
 // the `.canvas` card each one renders into.
 const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
 
-const diagonalBlocks = [{ id: 'a' }, { id: 'b' }]
-
 const bezierDefault: ConnectionDescriptor[] = [
   {
     id: 'c',
@@ -52,7 +50,6 @@ const smoothstepSolo: ConnectionDescriptor[] = [
   },
 ]
 
-const fanoutBlocks = [{ id: 'src', ports: [{ id: 'out' }] }, { id: 't1' }, { id: 't2' }]
 const fanoutConnections: ConnectionDescriptor[] = [
   {
     id: 'c1',
@@ -82,9 +79,9 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>bezier <span class="muted">(default)</span></h3>
         <p class="caption"><code>curvature: 0.5</code>, <code>curveMaxReach: 160</code></p>
         <div class="canvas">
-          <VisualLinker :blocks="diagonalBlocks" :connections="bezierDefault" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="bezierDefault" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -93,9 +90,9 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>bezier <span class="muted">(wider bow)</span></h3>
         <p class="caption"><code>curvature: 0.75</code>, <code>curveMaxReach: 260</code></p>
         <div class="canvas">
-          <VisualLinker :blocks="diagonalBlocks" :connections="bezierWide" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="bezierWide" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -104,9 +101,9 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>straight</h3>
         <p class="caption">no control points at all</p>
         <div class="canvas">
-          <VisualLinker :blocks="diagonalBlocks" :connections="straightConnections" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="straightConnections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -115,9 +112,9 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>smoothstep <span class="muted">(solo)</span></h3>
         <p class="caption">orthogonal routing, rounded 90° bends (<code>cornerRadius</code>)</p>
         <div class="canvas">
-          <VisualLinker :blocks="diagonalBlocks" :connections="smoothstepSolo" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="smoothstepSolo" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -131,10 +128,10 @@ const fanoutConnections: ConnectionDescriptor[] = [
           caps how far it can stretch)
         </p>
         <div class="canvas canvas--fanout">
-          <VisualLinker :blocks="fanoutBlocks" :connections="fanoutConnections" :options="dragOptions">
-            <template #block-src><div class="card">Src</div></template>
-            <template #block-t1><div class="card">T1</div></template>
-            <template #block-t2><div class="card">T2</div></template>
+          <VisualLinker :connections="fanoutConnections" :options="dragOptions">
+            <div v-vl-block="'src'" v-vl-port="'out'" class="card node left-mid">Src</div>
+            <div v-vl-block="'t1'" class="card node tr">T1</div>
+            <div v-vl-block="'t2'" class="card node br">T2</div>
           </VisualLinker>
         </div>
       </div>
@@ -197,42 +194,31 @@ const fanoutConnections: ConnectionDescriptor[] = [
   height: 220px;
 }
 
-:deep(.vl-container) {
-  position: relative;
+.canvas :deep(.vl-container) {
   height: 100%;
 }
 
-:deep(.vl-block) {
+.node {
   position: absolute;
   width: 56px;
   height: 32px;
 }
-
-:deep(.vl-block:nth-child(1)) {
+.tl {
   top: 16px;
   left: 16px;
 }
-:deep(.vl-block:nth-child(2)) {
+.tr {
+  top: 16px;
+  right: 16px;
+}
+.br {
   bottom: 16px;
   right: 16px;
 }
-
-.canvas--fanout {
-  height: 220px;
-}
-
-.canvas--fanout :deep(.vl-block:nth-child(1)) {
+/* Its own transform composes with the drag offset, which uses `translate`. */
+.left-mid {
   top: 50%;
   left: 16px;
   transform: translateY(-50%);
-}
-.canvas--fanout :deep(.vl-block:nth-child(2)) {
-  top: 16px;
-  right: 16px;
-  bottom: auto;
-}
-.canvas--fanout :deep(.vl-block:nth-child(3)) {
-  bottom: 16px;
-  right: 16px;
 }
 </style>

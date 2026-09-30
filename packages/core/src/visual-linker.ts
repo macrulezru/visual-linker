@@ -19,7 +19,7 @@ import {
   smoothstepPoints,
 } from './orthogonal'
 import { createResizeWatcher } from './resize-watcher'
-import { createSvgLayer } from './svg-layer'
+import { createSvgLayer, type SvgPathInput } from './svg-layer'
 import {
   DEFAULT_CORNER_RADIUS,
   DEFAULT_CURVE_TYPE,
@@ -77,8 +77,16 @@ function toLocal(point: Point, containerRect: DOMRect): Point {
   return { x: point.x - containerRect.left, y: point.y - containerRect.top }
 }
 
+// The standalone `translate` property rather than `transform`, so dragging
+// composes with any transform the block element already has of its own
+// instead of overwriting it.
 function applyDragTransform(el: HTMLElement, offset: Point) {
-  el.style.transform = offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : ''
+  el.style.translate = offset.x || offset.y ? `${offset.x}px ${offset.y}px` : ''
+}
+
+/** Identifies a resolved endpoint by where it physically lands — two connections sharing a port on the same side get the same key. */
+function endpointKey(endpoint: ConnectionEndpoint, point: Point): string {
+  return `${endpoint.blockId}:${Math.round(point.x)}:${Math.round(point.y)}`
 }
 
 function snapToGrid(value: number, gridSize: number): number {
@@ -387,7 +395,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     )
 
     // Pass 3: build the actual paths/port markers now that every branch point is known.
-    const paths: { id: string; d: string; style?: ConnectionDescriptor['style'] }[] = []
+    const paths: SvgPathInput[] = []
     const portLayouts: PortLayout[] = []
     const seenPortKeys = new Set<string>()
     const connectionLayouts: ConnectionLayout[] = []
@@ -409,7 +417,13 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
                 connection.style?.cornerRadius ?? cornerRadiusDefault,
               )
             : bezierPath(from.point, from.side, to.point, to.side, resolveCurveGeometry(connection.style))
-      paths.push({ id: connection.id, d, style: connection.style })
+      paths.push({
+        id: connection.id,
+        d,
+        style: connection.style,
+        fromKey: endpointKey(connection.from, from.point),
+        toKey: endpointKey(connection.to, to.point),
+      })
 
       let mid: Point
       let fromAngle: number
@@ -446,7 +460,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         // an 'auto'-side port can resolve to a different side per connection
         // (e.g. one target below, another far to the right), and each distinct
         // point earns its own marker — only truly-coincident points collapse.
-        const key = `${endpoint.blockId}:${Math.round(r.point.x)}:${Math.round(r.point.y)}`
+        const key = endpointKey(endpoint, r.point)
         if (seenPortKeys.has(key)) continue
         seenPortKeys.add(key)
         portLayouts.push({ key, blockId: endpoint.blockId, portId: endpoint.portId, point: r.point })

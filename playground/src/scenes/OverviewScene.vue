@@ -6,52 +6,19 @@ import {
   VLFixedSideEnum,
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
-  type VisualLinkerBlock,
 } from '@macrulez/visual-linker-vue'
 import EventLog from '../components/EventLog.vue'
 
-const simpleBlocks = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b17', 'b18', 'b19', 'b20', 'b21']
+const simpleBlocks = ['b1', 'b2', 'b4', 'b5', 'b6', 'b17', 'b18', 'b19', 'b20', 'b21']
 
 const lastEvent = ref('—')
 
-// Template refs for Block 13's own root, its drag handle, and its three rows
-// — passed directly as `dragHandle`/`anchorEl`/`target` below instead of a
-// data-attribute + CSS selector. Each starts out null and resolves once its
-// element mounts; the block/port config re-syncs automatically when that
-// happens (see VisualLinker.ts's watchEffect).
-const groupRef = ref<HTMLElement | null>(null)
-const groupTitleRef = ref<HTMLElement | null>(null)
-const row14Ref = ref<HTMLElement | null>(null)
-const row15Ref = ref<HTMLElement | null>(null)
-const row16Ref = ref<HTMLElement | null>(null)
-
-const blocks: VisualLinkerBlock[] = [
-  { id: 'b1' },
-  { id: 'b2' },
-  // 'out' is restricted to ['bottom', 'right']: dragging b3 around never sends
-  // its connections out the top or left, even if full auto would prefer that.
-  { id: 'b3', draggable: true, ports: [{ id: 'out', side: [VLFixedSideEnum.BOTTOM, VLFixedSideEnum.RIGHT] }] },
-  { id: 'b4' },
-  { id: 'b5' },
-  { id: 'b6' },
-  {
-    id: 'b13',
-    draggable: true,
-    dragHandle: groupTitleRef,
-    // anchorEl: the connector points sit on the group's own border (not each
-    // row's own indented edge), while still tracking each row's real height.
-    ports: [
-      { id: 'p14', target: row14Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
-      { id: 'p15', target: row15Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
-      { id: 'p16', target: row16Ref, side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT], anchorEl: groupRef },
-    ],
-  },
-  { id: 'b17' },
-  { id: 'b18' },
-  { id: 'b19' },
-  { id: 'b20' },
-  { id: 'b21' },
-]
+// b3's shared 'out' port is restricted to ['bottom', 'right']: dragging b3 around never
+// sends its connections out the top or left, even if full auto would prefer that.
+const outSides = [VLFixedSideEnum.BOTTOM, VLFixedSideEnum.RIGHT]
+// Block 13's rows: each port tracks its own row's height, but anchorBlockId puts
+// the connector point on the group's own border, not the row's indented edge.
+const rowSides = [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT]
 
 const connections: ConnectionDescriptor[] = [
   {
@@ -152,7 +119,6 @@ function label(id: string) {
     <EventLog :event="lastEvent" />
 
     <VisualLinker
-      :blocks="blocks"
       :connections="connections"
       :options="{
         dragGridSize: 20,
@@ -171,18 +137,31 @@ function label(id: string) {
       @block-drag="lastEvent = `block-drag: ${$event.blockId} (${$event.x}, ${$event.y})`"
       @block-dragend="lastEvent = `block-dragend: ${$event.blockId}`"
     >
-      <template v-for="id in simpleBlocks" :key="id" #[`block-${id}`]>
-        <div class="card">{{ label(id) }}</div>
-      </template>
+      <!-- Blocks are plain elements placed straight into the grid — no wrappers.
+           v-vl-block marks them; the grid itself lives on .vl-container. -->
+      <div v-for="id in simpleBlocks" :key="id" v-vl-block="id" class="card" :style="{ gridArea: id }">
+        {{ label(id) }}
+      </div>
 
-      <template #block-b13>
-        <div ref="groupRef" class="card group">
-          <div ref="groupTitleRef" class="group-title">Block 13 (drag handle)</div>
-          <div ref="row14Ref" class="sub">Block 14</div>
-          <div ref="row15Ref" class="sub">Block 15</div>
-          <div ref="row16Ref" class="sub">Block 16</div>
-        </div>
-      </template>
+      <div
+        v-vl-block="{ id: 'b3', draggable: true }"
+        v-vl-port="{ id: 'out', side: outSides }"
+        class="card"
+        style="grid-area: b3"
+      >
+        Block 3
+      </div>
+
+      <div
+        v-vl-block="{ id: 'b13', draggable: true, dragHandle: '.group-title' }"
+        class="card group"
+        style="grid-area: b13"
+      >
+        <div class="group-title">Block 13 (drag handle)</div>
+        <div v-vl-port="{ id: 'p14', side: rowSides, anchorBlockId: 'b13' }" class="sub">Block 14</div>
+        <div v-vl-port="{ id: 'p15', side: rowSides, anchorBlockId: 'b13' }" class="sub">Block 15</div>
+        <div v-vl-port="{ id: 'p16', side: rowSides, anchorBlockId: 'b13' }" class="sub">Block 16</div>
+      </div>
 
       <!-- #connection-label: arbitrary HTML positioned at the connection's
            actual midpoint (curve-aware), tracked live off the 'layout' event
@@ -209,8 +188,8 @@ function label(id: string) {
     <div class="callout">
       <span class="badge">Also available</span>
       <p>
-        <code>useVisualLinker()</code> is a low-level composable for when the slot-per-block
-        <code>&lt;VisualLinker&gt;</code> component doesn't fit — same engine, you own the block elements directly:
+        <code>useVisualLinker()</code> is a low-level composable for when you'd rather not render a
+        <code>&lt;VisualLinker&gt;</code> at all — same engine, wired straight to your own container element:
       </p>
       <pre class="code-preview"><span class="k">const</span> { engine } = useVisualLinker(containerRef, {
   blocks: <span class="k">computed</span>(() =&gt; [{ id: <span class="s">'a'</span>, el: aRef.value! }, ...]),
@@ -243,44 +222,7 @@ function label(id: string) {
     'b13 b21 .   .';
 }
 
-:deep(.vl-block:nth-child(1)) {
-  grid-area: b1;
-}
-:deep(.vl-block:nth-child(2)) {
-  grid-area: b2;
-}
-:deep(.vl-block:nth-child(3)) {
-  grid-area: b3;
-}
-:deep(.vl-block:nth-child(4)) {
-  grid-area: b4;
-}
-:deep(.vl-block:nth-child(5)) {
-  grid-area: b5;
-}
-:deep(.vl-block:nth-child(6)) {
-  grid-area: b6;
-}
-:deep(.vl-block:nth-child(7)) {
-  grid-area: b13;
-}
-:deep(.vl-block:nth-child(8)) {
-  grid-area: b17;
-}
-:deep(.vl-block:nth-child(9)) {
-  grid-area: b18;
-}
-:deep(.vl-block:nth-child(10)) {
-  grid-area: b19;
-}
-:deep(.vl-block:nth-child(11)) {
-  grid-area: b20;
-}
-:deep(.vl-block:nth-child(12)) {
-  grid-area: b21;
-}
-
-:deep(.card.group) {
+.card.group {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
@@ -289,7 +231,7 @@ function label(id: string) {
   background: var(--color-surface-alt);
 }
 
-:deep(.group-title) {
+.group-title {
   text-align: center;
   font-size: 13px;
   font-weight: 600;
@@ -297,7 +239,7 @@ function label(id: string) {
   margin-bottom: 4px;
 }
 
-:deep(.sub) {
+.sub {
   background: var(--color-accent-soft);
   border-radius: var(--radius-sm);
   padding: 10px;

@@ -59,13 +59,14 @@ describe('@macrulez/visual-linker-nuxt module', () => {
     expect(addImports).toHaveBeenCalledWith({ name: 'useVisualLinker', from: '@macrulez/visual-linker-vue' })
   })
 
-  it('registers the client-only plugin', async () => {
+  it('registers the universal directives plugin and the client-only defaults plugin', async () => {
     const { default: visualLinkerModule } = await import('../src/module')
     const nuxt = createMockNuxt()
 
     // @ts-expect-error see above
     visualLinkerModule({}, nuxt)
 
+    expect(addPlugin).toHaveBeenCalledWith('/resolved/runtime/plugin')
     expect(addPlugin).toHaveBeenCalledWith('/resolved/runtime/plugin.client')
   })
 

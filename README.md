@@ -14,7 +14,7 @@ measures it and draws the lines.
 | Package                                         | Description                                                                                                                                 |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@macrulez/visual-linker-core`](packages/core) | Framework-agnostic engine — `createVisualLinker(container, options)`, no Vue involved.                                                      |
-| [`@macrulez/visual-linker-vue`](packages/vue)   | `<VisualLinker>` component (slot per block) and `useVisualLinker()` composable — plus every core export, re-exported.                       |
+| [`@macrulez/visual-linker-vue`](packages/vue)   | `<VisualLinker>` component, `v-vl-block`/`v-vl-port` directives and `useVisualLinker()` composable — plus every core export, re-exported.   |
 | [`@macrulez/visual-linker-nuxt`](packages/nuxt) | Nuxt module wrapping the Vue package — auto-imports `<VisualLinker>`/`useVisualLinker`, seeds shared option defaults from `nuxt.config.ts`. |
 
 ---
@@ -27,7 +27,7 @@ measures it and draws the lines.
 - **A typed event API** — drag/hover/click events, plus a per-render `layout` event carrying every connection's and port's resolved geometry, for building your own overlay content
 - **Per-connection styling** — color, width, dashed, start/end markers (four built-in shapes or custom SVG), and a distinct hover style, all overridable per connection on top of instance-wide defaults
 - **Resize & scroll reactivity out of the box** — every connection recomputes itself when a block resizes, the window resizes, or the container scrolls — no manual event wiring
-- **A component, a composable, and a Nuxt module over one core** — `<VisualLinker>` with a slot per block, the low-level `useVisualLinker()` escape hatch, and a Nuxt module with auto-imports and config-level option defaults; both Vue packages **re-export the full core surface**, so installing just `@macrulez/visual-linker-vue` reaches the framework-agnostic layer too
+- **A component, a composable, and a Nuxt module over one core** — `<VisualLinker>` around your own markup (blocks marked with `v-vl-block`/`data-vl-block` at any depth, or anywhere on the page with `scope="page"`), the low-level `useVisualLinker()` escape hatch, and a Nuxt module with auto-imports and config-level option defaults; both Vue packages **re-export the full core surface**, so installing just `@macrulez/visual-linker-vue` reaches the framework-agnostic layer too
 - **Zero peer dependencies in core** — `@macrulez/visual-linker-core` runs anywhere, including outside a framework entirely
 
 ---
@@ -86,17 +86,15 @@ linker.setConnections([{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' }
 
 ```vue
 <script setup lang="ts">
-import { VisualLinker } from '@macrulez/visual-linker-vue'
+import { VisualLinker, vVlBlock } from '@macrulez/visual-linker-vue'
 
 const blocks = [{ id: 'a' }, { id: 'b' }]
 const connections = [{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' } }]
 </script>
 
 <template>
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template v-for="b in blocks" #[`block-${b.id}`]="{}" :key="b.id">
-      <div class="card">{{ b.id }}</div>
-    </template>
+  <VisualLinker :connections="connections">
+    <div v-for="b in blocks" :key="b.id" v-vl-block="b.id" class="card">{{ b.id }}</div>
   </VisualLinker>
 </template>
 ```
@@ -115,11 +113,9 @@ export default defineNuxtConfig({
 
 ```vue
 <template>
-  <!-- <VisualLinker>/useVisualLinker are auto-imported — no explicit import needed -->
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template v-for="b in blocks" #[`block-${b.id}`]="{}" :key="b.id">
-      <div class="card">{{ b.id }}</div>
-    </template>
+  <!-- <VisualLinker>, useVisualLinker and v-vl-block/v-vl-port are registered by the module -->
+  <VisualLinker :connections="connections">
+    <div v-for="b in blocks" :key="b.id" v-vl-block="b.id" class="card">{{ b.id }}</div>
   </VisualLinker>
 </template>
 ```

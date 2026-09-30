@@ -6,9 +6,11 @@ import PortsScene from './scenes/PortsScene.vue'
 import InteractivityScene from './scenes/InteractivityScene.vue'
 import MarkersScene from './scenes/MarkersScene.vue'
 import LiveControlsScene from './scenes/LiveControlsScene.vue'
+import FreePlacementScene from './scenes/FreePlacementScene.vue'
 
 const tabs = [
   { id: 'overview', label: 'Overview', component: OverviewScene },
+  { id: 'free', label: 'Free placement', component: FreePlacementScene },
   { id: 'curves', label: 'Curves', component: CurvesScene },
   { id: 'ports', label: 'Ports & anchoring', component: PortsScene },
   { id: 'interactivity', label: 'Drag & interactivity', component: InteractivityScene },

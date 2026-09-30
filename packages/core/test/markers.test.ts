@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createMarkerElement, markerSignature, resolveMarkerConfig } from '../src/markers'
+import {
+  attachedArrowTipX,
+  createMarkerElement,
+  markerSignature,
+  resolveMarkerConfig,
+  shapeEdgeDistance,
+} from '../src/markers'
 import { VLMarkerShapeEnum, VLOrientEnum } from '../src/enums'
 
 describe('resolveMarkerConfig', () => {
@@ -153,5 +159,56 @@ describe('createMarkerElement', () => {
       resolveMarkerConfig({ shape: VLMarkerShapeEnum.ARROW, color: 'green', strokeColor: 'blue' }, '#000')!,
     )
     expect(el.querySelector('path')!.getAttribute('stroke')).toBe('green')
+  })
+})
+
+describe('arrow attached to a shape marker', () => {
+  it('resolves `arrow: true` with the connection color and no gap, and forces orient auto', () => {
+    const resolved = resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, color: '#fff', arrow: true }, '#123')!
+    expect(resolved.arrow).toEqual({ color: '#123', gap: 0 })
+    expect(resolved.orient).toBe(VLOrientEnum.AUTO)
+  })
+
+  it('takes an explicit arrow color/gap, and ignores `arrow` on the arrow shape itself', () => {
+    const resolved = resolveMarkerConfig({ shape: VLMarkerShapeEnum.SQUARE, arrow: { color: 'red', gap: 2 } }, '#000')!
+    expect(resolved.arrow).toEqual({ color: 'red', gap: 2 })
+    expect(resolveMarkerConfig({ shape: VLMarkerShapeEnum.ARROW, arrow: true }, '#000')!.arrow).toBeUndefined()
+  })
+
+  it('measures the edge per shape, outline included', () => {
+    const edge = (config: Parameters<typeof resolveMarkerConfig>[0]) =>
+      shapeEdgeDistance(resolveMarkerConfig(config, '#000')!)
+    expect(edge({ shape: VLMarkerShapeEnum.CIRCLE })).toBe(6)
+    expect(edge({ shape: VLMarkerShapeEnum.CIRCLE, strokeColor: 'blue', strokeWidth: 2 })).toBe(7)
+    expect(edge({ shape: VLMarkerShapeEnum.SQUARE })).toBe(6)
+    expect(edge({ shape: VLMarkerShapeEnum.DIAMOND })).toBe(8)
+    expect(edge({ svg: '<circle r="3" />' })).toBe(0)
+  })
+
+  it("puts the arrow's rounded tip exactly on the shape's edge, and widens the viewBox to fit it", () => {
+    const resolved = resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, arrow: true, size: 5 }, '#000')!
+    // center 10 − radius 6 − half the arrow's 3-unit stroke
+    expect(attachedArrowTipX(resolved)).toBe(2.5)
+
+    const el = createMarkerElement('m', 'end', resolved)
+    const [minX, , width] = el.getAttribute('viewBox')!.split(' ').map(Number)
+    expect(minX).toBeLessThan(0)
+    expect(minX! + width!).toBe(20)
+    // One viewBox unit keeps a plain marker's on-screen size.
+    expect(Number(el.getAttribute('markerWidth')) / width!).toBeCloseTo(5 / 20)
+    expect(el.getAttribute('refX')).toBe('10')
+    expect(el.getAttribute('orient')).toBe('auto')
+
+    const [arrow, shape] = [...el.children]
+    expect(arrow!.getAttribute('d')).toContain('L 2.5 10')
+    expect(arrow!.getAttribute('stroke')).toBe('#000')
+    expect(shape!.tagName).toBe('circle')
+  })
+
+  it('keeps a start marker reversed, and gives an arrow-carrying config its own signature', () => {
+    const plain = resolveMarkerConfig(VLMarkerShapeEnum.CIRCLE, '#000')!
+    const withArrow = resolveMarkerConfig({ shape: VLMarkerShapeEnum.CIRCLE, arrow: true }, '#000')!
+    expect(createMarkerElement('m', 'start', withArrow).getAttribute('orient')).toBe('auto-start-reverse')
+    expect(markerSignature('end', plain)).not.toBe(markerSignature('end', withArrow))
   })
 })

@@ -6,7 +6,6 @@ import {
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
   type MarkerConfig,
-  type VisualLinkerBlock,
   type VisualLinkerOptions,
 } from '@macrulez/visual-linker-vue'
 
@@ -14,7 +13,6 @@ import {
 // <VisualLinker>'s own root element.
 const linkerOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
 
-const blocks: VisualLinkerBlock[] = [{ id: 'top' }, { id: 'b1' }, { id: 'b2' }, { id: 'b3' }]
 const targets = ['b1', 'b2', 'b3']
 
 // --- curve ---
@@ -146,11 +144,11 @@ const shapeOptions: { value: ShapeChoice; label: string }[] = [
 
     <div class="layout">
       <div ref="canvasRef" class="canvas">
-        <VisualLinker :blocks="blocks" :connections="connections" :options="linkerOptions">
-          <template #block-top><div class="card card--top">Top</div></template>
-          <template #block-b1><div class="card">B1</div></template>
-          <template #block-b2><div class="card">B2</div></template>
-          <template #block-b3><div class="card">B3</div></template>
+        <VisualLinker :connections="connections" :options="linkerOptions">
+          <div v-vl-block="'top'" class="card card--top node pos-top">Top</div>
+          <div v-vl-block="'b1'" class="card node pos-b1">B1</div>
+          <div v-vl-block="'b2'" class="card node pos-b2">B2</div>
+          <div v-vl-block="'b3'" class="card node pos-b3">B3</div>
           <template #connection-label>
             <span v-if="labelEnabled && labelText" class="connection-label">{{ labelText }}</span>
           </template>
@@ -373,27 +371,26 @@ const shapeOptions: { value: ShapeChoice; label: string }[] = [
   height: 100%;
 }
 
-:deep(.vl-block) {
+.node {
   position: absolute;
   width: 96px;
   height: 52px;
 }
-
-:deep(.vl-block:nth-child(1)) {
+.pos-top {
   top: 28px;
   left: 50%;
   transform: translateX(-50%);
 }
-:deep(.vl-block:nth-child(2)) {
+.pos-b1 {
   bottom: 28px;
   left: 40px;
 }
-:deep(.vl-block:nth-child(3)) {
+.pos-b2 {
   bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
 }
-:deep(.vl-block:nth-child(4)) {
+.pos-b3 {
   bottom: 28px;
   right: 40px;
 }
