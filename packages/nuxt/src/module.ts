@@ -61,6 +61,8 @@ const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOpt
       defaultArrowMarkerSize: options.arrowMarkerSize,
     }
 
+    // Registers v-vl-block / v-vl-port on both server and client.
+    addPlugin(resolver.resolve('./runtime/plugin'))
     // Applies module options on the client only — <VisualLinker>/useVisualLinker
     // are already SSR-safe no-ops, this just seeds their shared client-side defaults.
     addPlugin(resolver.resolve('./runtime/plugin.client'))

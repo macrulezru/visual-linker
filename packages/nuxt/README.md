@@ -17,6 +17,7 @@ monorepo.
 ## Features
 
 - **Auto-imports `<VisualLinker>` and `useVisualLinker`** — registered/imported from `@macrulez/visual-linker-vue`, no explicit `import` anywhere in your app
+- **Registers `v-vl-block` / `v-vl-port` globally** — on the server too, so the `data-vl-*` discovery attributes are already in the server-rendered HTML
 - **Module options forwarded through `runtimeConfig`** — `defaultCurve`, `showPorts`, curve-geometry and port/marker-size knobs, `dragGridSize` — set once in `nuxt.config.ts`, applied everywhere
 - **A client-only plugin seeds those defaults** — reads the runtime config and calls `setVisualLinkerDefaults(...)` once, on the client
 - **Nothing needs `<ClientOnly>`** — the component/composable are SSR-safe on their own; this module's client-only-ness is only about _when_ the defaults get applied
@@ -61,10 +62,8 @@ Once the module is registered, just use the component — no imports:
 
 ```vue
 <template>
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template v-for="b in blocks" #[`block-${b.id}`]="{}" :key="b.id">
-      <div class="card">{{ b.id }}</div>
-    </template>
+  <VisualLinker :connections="connections">
+    <div v-for="b in blocks" :key="b.id" v-vl-block="b.id" class="card">{{ b.id }}</div>
   </VisualLinker>
 </template>
 ```
@@ -79,7 +78,8 @@ for the full component/composable API.
 
 1. **Auto-imports** `<VisualLinker>` as a global component and `useVisualLinker` as an auto-import, both sourced from `@macrulez/visual-linker-vue` — no explicit `import` needed in your components.
 2. **Forwards module options** into `runtimeConfig.public.visualLinker`.
-3. **Registers a client-only plugin** (`runtime/plugin.client.ts`) that reads that runtime config and calls `setVisualLinkerDefaults(...)` — so every `<VisualLinker>`/`useVisualLinker()` use that doesn't pass its own `options` picks up your configured defaults.
+3. **Registers the `v-vl-block` / `v-vl-port` directives** in a universal plugin (`runtime/plugin.ts`) — on the server too, so the `data-vl-*` attributes are already in the SSR markup.
+4. **Registers a client-only plugin** (`runtime/plugin.client.ts`) that reads that runtime config and calls `setVisualLinkerDefaults(...)` — so every `<VisualLinker>`/`useVisualLinker()` use that doesn't pass its own `options` picks up your configured defaults.
 
 No `defaults` are hardcoded in the module itself — a field left unset in
 `nuxt.config.ts` falls all the way through to

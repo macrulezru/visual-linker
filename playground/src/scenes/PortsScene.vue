@@ -1,28 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import {
   VisualLinker,
   VLConnectionCurveEnum,
   VLFixedSideEnum,
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
-  type VisualLinkerBlock,
   type VisualLinkerOptions,
 } from '@macrulez/visual-linker-vue'
 
 // Every mini-demo below is draggable, confined to its own small canvas.
 const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
 
-// --- side: 'auto' vs a restricted candidate list ---
-// The target sits directly ABOVE the source in both mini-canvases: full auto
+// The target sits directly ABOVE the source in both side demos: full auto
 // would exit through 'top', but the restricted port never considers it.
-const autoBlocks: VisualLinkerBlock[] = [{ id: 'target' }, { id: 'source' }]
+const restrictedSides = [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT]
 const autoConnections: ConnectionDescriptor[] = [
   { id: 'c', from: { blockId: 'source' }, to: { blockId: 'target' }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
-]
-const restrictedBlocks: VisualLinkerBlock[] = [
-  { id: 'target' },
-  { id: 'source', ports: [{ id: 'out', side: [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT] }] },
 ]
 const restrictedConnections: ConnectionDescriptor[] = [
   {
@@ -33,21 +26,6 @@ const restrictedConnections: ConnectionDescriptor[] = [
   },
 ]
 
-// --- anchorEl: connector sits on the group's own border, not each row's own ---
-const groupRef = ref<HTMLElement | null>(null)
-const row1Ref = ref<HTMLElement | null>(null)
-const row2Ref = ref<HTMLElement | null>(null)
-const anchorBlocks = [
-  {
-    id: 'group',
-    ports: [
-      { id: 'r1', target: row1Ref, side: VLFixedSideEnum.RIGHT, anchorEl: groupRef },
-      { id: 'r2', target: row2Ref, side: VLFixedSideEnum.RIGHT, anchorEl: groupRef },
-    ],
-  },
-  { id: 't1' },
-  { id: 't2' },
-]
 const anchorConnections: ConnectionDescriptor[] = [
   {
     id: 'c1',
@@ -64,31 +42,16 @@ const anchorConnections: ConnectionDescriptor[] = [
 ]
 
 // --- maxTrunkReach: two targets tied in the same column ---
-const trunkBlocks = [{ id: 'source', ports: [{ id: 'out' }] }, { id: 'top' }, { id: 'bottom' }]
 function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
+  const style = {
+    curve: VLConnectionCurveEnum.SMOOTHSTEP,
+    cornerRadius: 6,
+    maxTrunkReach,
+    endMarker: VLMarkerShapeEnum.ARROW,
+  }
   return [
-    {
-      id: 'c1',
-      from: { blockId: 'source', portId: 'out' },
-      to: { blockId: 'top' },
-      style: {
-        curve: VLConnectionCurveEnum.SMOOTHSTEP,
-        cornerRadius: 6,
-        maxTrunkReach,
-        endMarker: VLMarkerShapeEnum.ARROW,
-      },
-    },
-    {
-      id: 'c2',
-      from: { blockId: 'source', portId: 'out' },
-      to: { blockId: 'bottom' },
-      style: {
-        curve: VLConnectionCurveEnum.SMOOTHSTEP,
-        cornerRadius: 6,
-        maxTrunkReach,
-        endMarker: VLMarkerShapeEnum.ARROW,
-      },
-    },
+    { id: 'c1', from: { blockId: 'source', portId: 'out' }, to: { blockId: 'top' }, style },
+    { id: 'c2', from: { blockId: 'source', portId: 'out' }, to: { blockId: 'bottom' }, style },
   ]
 }
 </script>
@@ -101,10 +64,10 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
       <div class="demo">
         <h3>side: 'auto'</h3>
         <p class="caption">picks whichever side faces the target — here, straight up</p>
-        <div class="canvas canvas--vertical">
-          <VisualLinker :blocks="autoBlocks" :connections="autoConnections" :options="dragOptions">
-            <template #block-target><div class="card">Target</div></template>
-            <template #block-source><div class="card">Src</div></template>
+        <div class="canvas">
+          <VisualLinker :connections="autoConnections" :options="dragOptions">
+            <div v-vl-block="'target'" class="card node v-top">Target</div>
+            <div v-vl-block="'source'" class="card node v-bottom">Src</div>
           </VisualLinker>
         </div>
       </div>
@@ -112,51 +75,48 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
       <div class="demo">
         <h3>side: ['left', 'right']</h3>
         <p class="caption">same layout, but the candidate list rules out top/bottom entirely</p>
-        <div class="canvas canvas--vertical">
-          <VisualLinker :blocks="restrictedBlocks" :connections="restrictedConnections" :options="dragOptions">
-            <template #block-target><div class="card">Target</div></template>
-            <template #block-source><div class="card">Src</div></template>
-          </VisualLinker>
-        </div>
-      </div>
-
-      <div class="demo">
-        <h3>anchorEl</h3>
-        <p class="caption">both rows' connectors sit on the group's own edge, not their own indented one</p>
-        <div class="canvas canvas--anchor">
-          <VisualLinker :blocks="anchorBlocks" :connections="anchorConnections" :options="dragOptions">
-            <template #block-group>
-              <div ref="groupRef" class="card group">
-                <div ref="row1Ref" class="sub">Row 1</div>
-                <div ref="row2Ref" class="sub">Row 2</div>
-              </div>
-            </template>
-            <template #block-t1><div class="card">T1</div></template>
-            <template #block-t2><div class="card">T2</div></template>
-          </VisualLinker>
-        </div>
-      </div>
-
-      <div class="demo">
-        <h3>maxTrunkReach: 160</h3>
-        <p class="caption">two same-column targets — trunk stretches almost all the way to them</p>
         <div class="canvas">
-          <VisualLinker :blocks="trunkBlocks" :connections="trunkConnections(160)" :options="dragOptions">
-            <template #block-source><div class="card">Src</div></template>
-            <template #block-top><div class="card">Top</div></template>
-            <template #block-bottom><div class="card">Bottom</div></template>
+          <VisualLinker :connections="restrictedConnections" :options="dragOptions">
+            <div v-vl-block="'target'" class="card node v-top">Target</div>
+            <div v-vl-block="'source'" v-vl-port="{ id: 'out', side: restrictedSides }" class="card node v-bottom">
+              Src
+            </div>
           </VisualLinker>
         </div>
       </div>
 
       <div class="demo">
-        <h3>maxTrunkReach: 24</h3>
-        <p class="caption">same layout, capped — the fan-out stays short and distinct</p>
+        <h3>anchor on the group</h3>
+        <p class="caption">
+          plain <code>data-vl-*</code> attributes: both rows' connectors sit on the group's own edge, not their own
+          indented one
+        </p>
         <div class="canvas">
-          <VisualLinker :blocks="trunkBlocks" :connections="trunkConnections(24)" :options="dragOptions">
-            <template #block-source><div class="card">Src</div></template>
-            <template #block-top><div class="card">Top</div></template>
-            <template #block-bottom><div class="card">Bottom</div></template>
+          <VisualLinker :connections="anchorConnections" :options="dragOptions">
+            <div data-vl-block="group" class="card group left-mid">
+              <div data-vl-port="r1" data-vl-side="right" data-vl-anchor="group" class="sub">Row 1</div>
+              <div data-vl-port="r2" data-vl-side="right" data-vl-anchor="group" class="sub">Row 2</div>
+            </div>
+            <div data-vl-block="t1" class="card node tr">T1</div>
+            <div data-vl-block="t2" class="card node br">T2</div>
+          </VisualLinker>
+        </div>
+      </div>
+
+      <div v-for="reach in [160, 24]" :key="reach" class="demo">
+        <h3>maxTrunkReach: {{ reach }}</h3>
+        <p class="caption">
+          {{
+            reach > 100
+              ? 'two same-column targets — trunk stretches almost all the way to them'
+              : 'same layout, capped — the fan-out stays short and distinct'
+          }}
+        </p>
+        <div class="canvas">
+          <VisualLinker :connections="trunkConnections(reach)" :options="dragOptions">
+            <div v-vl-block="'source'" v-vl-port="'out'" class="card node left-mid">Src</div>
+            <div v-vl-block="'top'" class="card node tr">Top</div>
+            <div v-vl-block="'bottom'" class="card node br">Bottom</div>
           </VisualLinker>
         </div>
       </div>
@@ -206,53 +166,52 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
   height: 220px;
 }
 
-:deep(.vl-container) {
-  position: relative;
+.canvas :deep(.vl-container) {
   height: 100%;
 }
 
-:deep(.vl-block) {
+.caption code {
+  font-family: var(--font-mono);
+  background: var(--color-surface-alt);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.node {
   position: absolute;
   width: 56px;
   height: 30px;
 }
-
-:deep(.vl-block:nth-child(1)) {
+.tr {
+  top: 16px;
+  right: 16px;
+}
+.br {
+  bottom: 16px;
+  right: 16px;
+}
+.left-mid {
+  position: absolute;
   top: 50%;
   left: 16px;
   transform: translateY(-50%);
 }
-:deep(.vl-block:nth-child(2)) {
-  top: 16px;
-  right: 16px;
-}
-:deep(.vl-block:nth-child(3)) {
-  bottom: 16px;
-  right: 16px;
-}
-
-.canvas--vertical :deep(.vl-block) {
+.v-top,
+.v-bottom {
+  width: 64px;
   left: 50%;
   transform: translateX(-50%);
-  width: 64px;
 }
-.canvas--vertical :deep(.vl-block:nth-child(1)) {
+.v-top {
   top: 16px;
 }
-.canvas--vertical :deep(.vl-block:nth-child(2)) {
-  top: auto;
+.v-bottom {
   bottom: 16px;
-}
-
-.canvas--anchor :deep(.vl-block:nth-child(1)) {
-  width: 96px;
-  height: 84px;
-  top: 50%;
-  left: 16px;
-  transform: translateY(-50%);
 }
 
 .card.group {
+  width: 96px;
+  height: 84px;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;

@@ -15,6 +15,7 @@ export type {
   ConnectionStyle,
   MarkerShape,
   MarkerConfig,
+  MarkerArrowConfig,
   ConnectionEndpoint,
   ConnectionDescriptor,
   ConnectionLayout,

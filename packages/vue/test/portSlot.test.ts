@@ -1,5 +1,5 @@
-import { h, nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { h } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionLayout, PortLayout } from '@macrulez/visual-linker-core'
 
@@ -35,13 +35,11 @@ describe('#port overlay', () => {
         connections: [{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' } }],
       },
       slots: {
-        'block-a': () => 'A',
-        'block-b': () => 'B',
         port: ({ blockId, portId }: { blockId: string; portId?: string }) => h('i', `${blockId}:${portId ?? ''}`),
       },
       attachTo: document.body,
     })
-    await nextTick()
+    await flushPromises()
 
     emitLayout({
       connections: [],
@@ -50,7 +48,7 @@ describe('#port overlay', () => {
         { key: 'b:300:20', blockId: 'b', portId: 'in', point: { x: 300, y: 20 } },
       ],
     })
-    await nextTick()
+    await flushPromises()
 
     const slots = wrapper.findAll('.vl-port-slot')
     expect(slots).toHaveLength(2)
@@ -63,13 +61,12 @@ describe('#port overlay', () => {
   it('renders nothing when the port slot is not used, even if showPorts stays default', async () => {
     const wrapper = mount(VisualLinker, {
       props: { blocks: [{ id: 'a' }], connections: [] },
-      slots: { 'block-a': () => 'A' },
       attachTo: document.body,
     })
-    await nextTick()
+    await flushPromises()
 
     emitLayout({ connections: [], ports: [{ key: 'a:0:0', blockId: 'a', point: { x: 0, y: 0 } }] })
-    await nextTick()
+    await flushPromises()
 
     expect(wrapper.find('.vl-port-slot').exists()).toBe(false)
     expect(wrapper.find('.vl-overlay').exists()).toBe(false)

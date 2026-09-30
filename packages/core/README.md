@@ -146,11 +146,24 @@ linker.setConnections([
 ```
 
 `startMarker`/`endMarker` accept a bare shape name, a full `MarkerConfig`
-(`shape`/`size`/`color`/`strokeColor`/`strokeWidth`/`className`/`svg`/`orient`),
+(`shape`/`size`/`color`/`strokeColor`/`strokeWidth`/`className`/`svg`/`orient`/`arrow`),
 or `false` to suppress even the built-in port dot. `hoverStyle` overrides
 `color`/`width`/`dashed`/`markerSize` while the connection is hovered or
 its incident block is — falling back to the base style for any field left
 unset.
+
+A shape marker can carry a direction arrow too — the shape stays on the
+endpoint, and the arrow's tip stops exactly on the shape's outer edge
+(outline included), instead of the two overlapping:
+
+```ts
+endMarker: { shape: 'circle', color: '#fff', strokeColor: '#6366f1', strokeWidth: 2, arrow: true }
+endMarker: { shape: 'square', arrow: { color: '#e0526c', gap: 1 } } // own color, 1 unit of air before the edge
+```
+
+The arrow follows the line's direction, so a marker with `arrow` always
+uses `orient: 'auto'`. For a custom `svg` marker the edge can't be
+measured — set `arrow.gap` to the distance from the endpoint instead.
 
 #### Drag & drop
 

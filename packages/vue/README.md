@@ -19,111 +19,156 @@ option tuning).
 
 ## Features
 
-- **`<VisualLinker>`** — one wrapper `<div>` per block (measured by the engine) around a `#block-<id>` slot, plus an SVG overlay with the connections between them — you own the block markup entirely, this only measures and draws
-- **`useVisualLinker()`** — the low-level escape hatch for when the component's slot-per-block layout doesn't fit; wires the engine to a container and keeps it in sync with reactive `blocks`/`connections`
-- **Ref/getter-friendly everywhere** — a block's `el`, `dragHandle`, `dragBounds`, and a port's `target`/`anchorEl` all accept a Vue template ref directly, not just a CSS selector string
-- **Three overlay slots** — `#connection-label`, `#port`, `#marker` — HTML content positioned exactly where the engine's own SVG drawing puts each connection/port, driven by the same per-render `layout` event
-- **`setVisualLinkerDefaults()`** — package-wide fallback for most `VisualLinkerOptions` fields, read by both the component and the composable, so you don't repeat the same options at every call site — what [`@macrulez/visual-linker-nuxt`](https://www.npmjs.com/package/@macrulez/visual-linker-nuxt)'s module options configure under the hood
-- **The full `@macrulez/visual-linker-core` surface, re-exported** — `createVisualLinker`, every enum (`VLConnectionCurveEnum` etc.), and every type are all available straight from `@macrulez/visual-linker-vue` too, no separate core install needed
-- **SSR-safe by design** — both the component and the composable create the engine only inside `onMounted`, no `<ClientOnly>` needed
+- **`<VisualLinker>` around your own markup** — put any template in its default slot; blocks can sit at any depth, inside any wrapper components. No per-block wrappers, no per-block slots
+- **Three ways to mark blocks and ports** — the `v-vl-block` / `v-vl-port` directives, plain `data-vl-*` attributes, or the `blocks` prop with a template ref / getter / CSS selector — mix them freely
+- **Two scopes** — `scope="container"` (default) draws inside the component's own box; `scope="page"` links elements anywhere in the document, drawing in a fixed layer teleported to `<body>`
+- **Live discovery** — blocks and ports added, removed or re-marked later (`v-if`, `v-for`, third-party markup) are picked up automatically
+- **Ref/getter-friendly everywhere** — a block's `el`, `dragHandle`, `dragBounds`, and a port's `target`/`anchorEl` all accept a Vue template ref directly
+- **Three overlay slots** — `#connection-label`, `#port`, `#marker` — HTML content positioned exactly where the engine's own SVG drawing puts each connection/port
+- **`useVisualLinker()`** — the low-level composable, wired straight to a container element you render yourself
+- **`setVisualLinkerDefaults()`** — package-wide fallback for most `VisualLinkerOptions` fields — what [`@macrulez/visual-linker-nuxt`](https://www.npmjs.com/package/@macrulez/visual-linker-nuxt)'s module options configure under the hood
+- **The full `@macrulez/visual-linker-core` surface, re-exported** — `createVisualLinker`, every enum and every type, no separate core install needed
+- **SSR-safe by design** — the engine and its drawing layer only exist client-side after mount; the directives emit their `data-vl-*` attributes during SSR too
 
 ---
 
 ## When you'd reach for this
 
-The core engine's imperative `setBlocks`/`setConnections` API, wired to
-Vue's own reactivity — pass reactive data in, get connections drawn
-automatically, instead of manually calling engine methods in
-`onMounted`/watchers yourself.
-
-- **A `v-for` over blocks, each with its own slot content** — `<VisualLinker>` renders one wrapper per `blocks` entry and lets you fill each with whatever component you already have — no manual DOM measurement.
-- **Blocks the user can drag around** — `draggable`/`dragHandle` on a block, and every connected line follows in real time — no drag library, no manual coordinate math.
-- **A form/dashboard mostly built already, that just needs connector lines added on top** — `useVisualLinker()` wires the engine to elements you already render yourself, without restructuring your markup into `<VisualLinker>`'s slot-per-block shape.
-- **A label or custom marker that needs to live exactly on a connection** — `#connection-label`/`#marker` slots are positioned using the same per-render layout geometry the SVG lines themselves are drawn from, so they never drift out of sync.
-- **The same curve/port look needed on every diagram in an app** — `setVisualLinkerDefaults()` sets it once, instead of repeating `options` at every `<VisualLinker>`/`useVisualLinker()` call site.
+- **Connector lines on top of a layout you already have** — cards inside panels inside grid columns: mark the cards with `v-vl-block`, keep your components and CSS as they are.
+- **Rows or handles inside a block as connection points** — `v-vl-port` on the row; it attaches to the nearest block around it.
+- **Elements in completely different parts of the page** — a sidebar list and a main area rendered by different components: `scope="page"` connects them without restructuring anything.
+- **Blocks the user can drag around** — `draggable`/`dragHandle`/`dragBounds`, and every connected line follows in real time.
+- **A label or custom marker that must sit exactly on a connection** — `#connection-label`/`#marker` slots use the same per-render geometry as the SVG lines.
 
 ---
 
 ## Installation
 
-Requires Vue `^3.3.0` (for `toValue`/`MaybeRefOrGetter`).
+Requires Vue `^3.3.0`.
 
 ```bash
 npm install @macrulez/visual-linker-vue
+```
+
+Register the component and directives globally:
+
+```ts
+import { createApp } from 'vue'
+import { VisualLinkerPlugin } from '@macrulez/visual-linker-vue'
+
+createApp(App).use(VisualLinkerPlugin).mount('#app')
+```
+
+…or import them per component — in `<script setup>`, `vVlBlock`/`vVlPort` become `v-vl-block`/`v-vl-port` automatically:
+
+```ts
+import { VisualLinker, vVlBlock, vVlPort } from '@macrulez/visual-linker-vue'
 ```
 
 ### Quick start
 
 ```vue
 <script setup lang="ts">
-import { VisualLinker } from '@macrulez/visual-linker-vue'
-
-const blocks = [{ id: 'a' }, { id: 'b' }]
 const connections = [{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' } }]
 </script>
 
 <template>
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template v-for="b in blocks" #[`block-${b.id}`]="{}" :key="b.id">
-      <div class="card">{{ b.id }}</div>
-    </template>
+  <VisualLinker :connections="connections">
+    <MyLayout>
+      <MyCard v-vl-block="'a'" />
+      <SidePanel>
+        <div data-vl-block="b">Plain HTML works too</div>
+      </SidePanel>
+    </MyLayout>
   </VisualLinker>
 </template>
 ```
 
-The slot name is dynamic (``#[`block-${b.id}`]``, with the brackets) —
-required for a `v-for`-rendered `blocks` list; a literal `#block-a` only
-works for a hand-written, hardcoded id.
+### Marking blocks and ports
 
-### More examples
+All three methods feed the same registry and can be mixed in one diagram.
+
+**1. Directives**
+
+```vue
+<div v-vl-block="{ id: 'b13', draggable: true, dragHandle: '.title', dragBounds: 'container' }">
+  <div class="title">Drag me</div>
+  <!-- belongs to the nearest block around it -->
+  <div v-vl-port="{ id: 'row1', side: ['left', 'right'], anchorBlockId: 'b13' }">Row 1</div>
+</div>
+<!-- or attach a port to a block explicitly -->
+<span v-vl-port="{ id: 'out', block: 'b13' }" />
+```
+
+`v-vl-block="'b13'"` / `v-vl-port="'row1'"` is the shorthand for an id with no options.
+
+**2. Data attributes** — no JavaScript at all, handy for server-rendered or third-party markup:
+
+| Attribute                         | On         | Meaning                                                |
+| --------------------------------- | ---------- | ------------------------------------------------------ |
+| `data-vl-block="id"`              | block      | registers the element as a block                       |
+| `data-vl-draggable`               | block      | `""`/`"true"` → draggable, `"false"` → not             |
+| `data-vl-drag-handle=".sel"`      | block      | drag handle, a selector inside the block               |
+| `data-vl-drag-bounds="container"` | block      | `container`, or a CSS selector of the fence element    |
+| `data-vl-port="id"`               | port       | registers a port on the nearest block around it        |
+| `data-vl-port-block="id"`         | port       | …or on this block explicitly                           |
+| `data-vl-side="left right"`       | port       | one side, or a space/comma-separated candidate list    |
+| `data-vl-offset="0.3"`            | port       | position along the side, 0..1                          |
+| `data-vl-anchor="id"`             | port       | `anchorBlockId` — draw on that block's border instead  |
+| `data-vl-linker="name"`           | block/port | assign to the `<VisualLinker name="…">` with this name |
+
+**3. The `blocks` prop** — for refs held in `<script>`, or elements you can't add attributes to:
+
+```ts
+const cardRef = useTemplateRef('card')
+const blocks = [
+  { id: 'a', el: cardRef, ports: [{ id: 'p', target: rowRef }] }, // a template ref
+  { id: 'b', el: '#legacy-widget' }, // a CSS selector
+  { id: 'c', draggable: false }, // no el: extra config for a block marked in the template
+]
+```
+
+For the same id, the `blocks` prop wins over directive options, which win over data attributes.
+
+> Drag offsets are applied with the CSS `translate` property, so they compose with any `transform` a block already has. Avoid a _string_ `:style` binding on a draggable block — Vue replaces the whole inline style whenever that string changes.
+
+### `scope`: where blocks can live
+
+```vue
+<!-- default: blocks anywhere inside the component; lines drawn inside its own box -->
+<VisualLinker :connections="connections">…</VisualLinker>
+
+<!-- blocks anywhere in the document -->
+<VisualLinker scope="page" name="assign" :connections="connections" :z-index="10" />
+<TaskList><li v-vl-block="{ id: 't1', linker: 'assign' }">…</li></TaskList>
+<OwnerList><li data-vl-block="ann" data-vl-linker="assign">…</li></OwnerList>
+```
+
+Ownership rules: an explicit `data-vl-linker` / `linker` name wins; otherwise an element belongs to the nearest enclosing `<VisualLinker>` (so nested instances never take each other's blocks); an element outside every `<VisualLinker>` belongs to page-scoped instances. With several page-scoped instances on one page, give each a `name`.
+
+In page scope the lines are drawn in a `position: fixed` layer covering the viewport, teleported to `<body>` — so ancestors' `overflow: hidden` or `transform` can't clip or offset it; `zIndex` sets its stacking order. `dragBounds: 'container'` then means the viewport.
 
 #### `<VisualLinker>` props
 
-| Prop          | Type                     |                                                                                                                                                                                |
-| ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `blocks`      | `VisualLinkerBlock[]`    | required — `id`, optional `ports`/`draggable`/`dragHandle`/`dragBounds` (no `el` — the component owns each wrapper itself)                                                     |
-| `connections` | `ConnectionDescriptor[]` | required                                                                                                                                                                       |
-| `options`     | `VisualLinkerOptions`    | passed straight to `createVisualLinker()` — see [`@macrulez/visual-linker-core`'s README](https://www.npmjs.com/package/@macrulez/visual-linker-core) for the full option list |
+| Prop          | Type                     |                                                                                                                                                    |
+| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | `ConnectionDescriptor[]` | required                                                                                                                                           |
+| `blocks`      | `VisualLinkerBlock[]`    | optional — `id`, `el?` (ref/getter/element/selector), `ports`, `draggable`, `dragHandle`, `dragBounds`                                             |
+| `options`     | `VisualLinkerOptions`    | passed to `createVisualLinker()` once, on mount — see [`@macrulez/visual-linker-core`](https://www.npmjs.com/package/@macrulez/visual-linker-core) |
+| `scope`       | `'container' \| 'page'`  | default `'container'`                                                                                                                              |
+| `name`        | `string`                 | lets elements elsewhere claim this instance via `data-vl-linker` / the directives' `linker`                                                        |
+| `zIndex`      | `number \| string`       | stacking order of the drawing layer                                                                                                                |
 
 Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 `block-drag`, `block-dragend`, `block-mouseenter`, `block-mouseleave`,
 `connection-click`, `connection-mouseenter`, `connection-mouseleave`.
 
-#### Draggable blocks with a template ref handle
-
-```vue
-<script setup lang="ts">
-import { useTemplateRef } from 'vue'
-import { VisualLinker } from '@macrulez/visual-linker-vue'
-
-const handleRef = useTemplateRef('handle')
-const blocks = [{ id: 'a', draggable: true, dragHandle: handleRef }]
-const connections = []
-</script>
-
-<template>
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template #block-a="{}">
-      <div class="card">
-        <div ref="handle" class="card-header">drag me</div>
-      </div>
-    </template>
-  </VisualLinker>
-</template>
-```
-
-`dragHandle`/`dragBounds`, and a port's `target`/`anchorEl`, all accept a
-template ref directly — no need to resolve it to a raw element yourself
-first.
-
 #### Overlay slots
 
 ```vue
 <template>
-  <VisualLinker :blocks="blocks" :connections="connections">
-    <template v-for="b in blocks" #[`block-${b.id}`]="{}" :key="b.id">
-      <div class="card">{{ b.id }}</div>
-    </template>
+  <VisualLinker :connections="connections">
+    <div v-for="item in items" :key="item.id" v-vl-block="item.id" class="card">{{ item.id }}</div>
     <template #connection-label="{ connection, point }">
       <span class="badge">{{ connection.id }}</span>
     </template>

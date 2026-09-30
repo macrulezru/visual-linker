@@ -105,6 +105,25 @@ export interface MarkerConfig {
   svg?: string
   /** 'auto' rotates the marker to follow the line's direction (used by the built-in 'arrow'); 'fixed' keeps it upright. default follows `shape` */
   orient?: VLOrientEnum.AUTO | VLOrientEnum.FIXED
+  /**
+   * Also draws an arrowhead on the line right before this shape, its tip
+   * touching the shape's outer edge (outline included) — a port dot and a
+   * direction arrow in one. `true`, or `MarkerArrowConfig` to tune it.
+   * Forces `orient: 'auto'` so the arrow follows the line. Ignored when
+   * `shape` is `'arrow'` itself.
+   */
+  arrow?: boolean | MarkerArrowConfig
+}
+
+export interface MarkerArrowConfig {
+  /** default follows the connection's own `color` (not the shape's fill) */
+  color?: string
+  /**
+   * Extra space between the arrow's tip and the shape's edge, in the
+   * marker's 20-unit viewBox. For a custom `svg` marker (whose edge can't be
+   * measured) this is the distance from the endpoint itself. default 0
+   */
+  gap?: number
 }
 
 export interface ConnectionStyle {
@@ -155,7 +174,8 @@ export interface ConnectionStyle {
    * Overrides applied while this connection is hovered or highlighted (see
    * `connection:mouseenter`/hovering an incident block) — each field falls back to
    * the base value above when omitted. Omitting `hoverStyle` entirely keeps the
-   * default look (a CSS-driven width bump via `.vl-connection--active`).
+   * default look: a width bump (via `.vl-connection--active`, or inline when
+   * the connection has an explicit `width`).
    */
   hoverStyle?: {
     color?: string

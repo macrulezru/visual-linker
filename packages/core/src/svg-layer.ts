@@ -29,6 +29,9 @@ export interface SvgPathInput {
   id: string
   d: string
   style?: ConnectionStyle
+  /** Physical endpoint identity (block + rounded point) — connections sharing one hide their marker there while another is highlighted. */
+  fromKey?: string
+  toKey?: string
 }
 
 export interface SvgPortInput {
@@ -107,6 +110,7 @@ export function createSvgLayer(
   const ports = new Map<string, SVGCircleElement>()
   const markerDefs = new Map<string, SVGMarkerElement>()
   const styles = new Map<string, ConnectionStyle | undefined>()
+  const endpointKeys = new Map<string, { from?: string; to?: string }>()
   let markerIdCounter = 0
   let usedMarkerSignatures = new Set<string>()
   // Preserved across update() calls so a connection stays highlighted through
@@ -150,10 +154,17 @@ export function createSvgLayer(
    * dashed/markerSize) overrides the base value while active, and the markers
    * are recolored to match so the arrow doesn't fall out of sync with the line.
    */
-  function applyConnectionAppearance(el: SVGPathElement, style: ConnectionStyle | undefined, active: boolean) {
+  function applyConnectionAppearance(
+    el: SVGPathElement,
+    style: ConnectionStyle | undefined,
+    active: boolean,
+    hidden: { start: boolean; end: boolean },
+  ) {
     const hover = active ? style?.hoverStyle : undefined
     const color = hover?.color ?? style?.color
-    const width = hover?.width ?? style?.width
+    // An explicit `width` is set inline, which outranks the class's CSS width
+    // bump — so apply the same bump inline too, or the highlight would vanish.
+    const width = hover?.width ?? (active && style?.width != null ? style.width + ACTIVE_LINE_WIDTH_BUMP : style?.width)
     const dashed = hover?.dashed ?? style?.dashed
 
     el.style.stroke = color ?? ''
@@ -170,8 +181,41 @@ export function createSvgLayer(
       withHoverMarkerSize(style?.endMarker, hover?.markerSize),
       color ?? DEFAULT_LINE_COLOR,
     )
-    el.style.markerStart = startMarkerId ? `url(#${startMarkerId})` : ''
-    el.style.markerEnd = endMarkerId ? `url(#${endMarkerId})` : ''
+    el.style.markerStart = startMarkerId && !hidden.start ? `url(#${startMarkerId})` : ''
+    el.style.markerEnd = endMarkerId && !hidden.end ? `url(#${endMarkerId})` : ''
+  }
+
+  function activeEndpointKeys(): Set<string> {
+    const keys = new Set<string>()
+    for (const id of activeIds) {
+      const endpoints = endpointKeys.get(id)
+      if (endpoints?.from) keys.add(endpoints.from)
+      if (endpoints?.to) keys.add(endpoints.to)
+    }
+    return keys
+  }
+
+  /**
+   * A non-highlighted connection hides its marker on any end that sits on the
+   * same point as a highlighted connection's end — otherwise its resting-size
+   * marker would overlap the highlighted (and possibly enlarged) one there.
+   * Only the markers go; the line itself stays.
+   */
+  function hiddenEnds(id: string, active: boolean, activeKeys: Set<string>) {
+    const endpoints = endpointKeys.get(id)
+    return {
+      start: !active && Boolean(endpoints?.from && activeKeys.has(endpoints.from)),
+      end: !active && Boolean(endpoints?.to && activeKeys.has(endpoints.to)),
+    }
+  }
+
+  /** Paints highlighted connections last (but still under the port dots), so a sibling's line never crosses over an enlarged marker. */
+  function raiseActivePaths() {
+    const firstPort = svg.querySelector('.vl-port')
+    for (const id of activeIds) {
+      const el = paths.get(id)
+      if (el) svg.insertBefore(el, firstPort)
+    }
   }
 
   function resize(width: number, height: number) {
@@ -189,8 +233,11 @@ export function createSvgLayer(
         hits.get(id)?.remove()
         hits.delete(id)
         styles.delete(id)
+        endpointKeys.delete(id)
       }
     }
+    for (const input of nextPaths) endpointKeys.set(input.id, { from: input.fromKey, to: input.toKey })
+    const activeKeys = activeEndpointKeys()
     for (const input of nextPaths) {
       let el = paths.get(input.id)
       if (!el) {
@@ -212,10 +259,12 @@ export function createSvgLayer(
       el.setAttribute('d', input.d)
       el.classList.toggle('vl-connection--active', activeIds.has(input.id))
       styles.set(input.id, input.style)
-      applyConnectionAppearance(el, input.style, activeIds.has(input.id))
+      const active = activeIds.has(input.id)
+      applyConnectionAppearance(el, input.style, active, hiddenEnds(input.id, active, activeKeys))
 
       hits.get(input.id)?.setAttribute('d', input.d)
     }
+    raiseActivePaths()
 
     for (const [signature, el] of markerDefs) {
       if (!usedMarkerSignatures.has(signature)) {
@@ -247,11 +296,13 @@ export function createSvgLayer(
   /** Toggles the `.vl-connection--active` highlight (plus each connection's own `hoverStyle`, if any) on exactly the given connection ids. */
   function setActiveConnections(ids: Iterable<string>) {
     activeIds = new Set(ids)
+    const activeKeys = activeEndpointKeys()
     for (const [id, el] of paths) {
       const active = activeIds.has(id)
       el.classList.toggle('vl-connection--active', active)
-      applyConnectionAppearance(el, styles.get(id), active)
+      applyConnectionAppearance(el, styles.get(id), active, hiddenEnds(id, active, activeKeys))
     }
+    raiseActivePaths()
   }
 
   function destroy() {
@@ -261,6 +312,7 @@ export function createSvgLayer(
     ports.clear()
     markerDefs.clear()
     styles.clear()
+    endpointKeys.clear()
   }
 
   return { resize, update, setActiveConnections, destroy }

@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import {
-  VisualLinker,
-  VLMarkerShapeEnum,
-  type ConnectionDescriptor,
-  type VisualLinkerBlock,
-} from '@macrulez/visual-linker-vue'
+import { VisualLinker, VLMarkerShapeEnum, type ConnectionDescriptor } from '@macrulez/visual-linker-vue'
 import EventLog from '../components/EventLog.vue'
 
 const lastEvent = ref('—')
 
-const blocks: VisualLinkerBlock[] = [
-  { id: 'hub', draggable: true },
-  { id: 'a', draggable: true },
-  { id: 'b', draggable: true },
-  { id: 'c', draggable: true },
+const nodes = [
+  { id: 'hub', label: 'Hub', top: 180, left: 340, hub: true },
+  { id: 'a', label: 'A', top: 24, left: 48 },
+  { id: 'b', label: 'B', top: 180, left: 48 },
+  { id: 'c', label: 'C', top: 336, left: 48 },
 ]
 
 const connections: ConnectionDescriptor[] = [
@@ -35,7 +30,6 @@ const connections: ConnectionDescriptor[] = [
 
     <div class="canvas">
       <VisualLinker
-        :blocks="blocks"
         :connections="connections"
         :options="{ draggable: true, dragGridSize: 24, dragBounds: 'container' }"
         @connection-click="lastEvent = `connection-click: ${$event.id}`"
@@ -44,10 +38,16 @@ const connections: ConnectionDescriptor[] = [
         @block-drag="lastEvent = `block-drag: ${$event.blockId} (${$event.x}, ${$event.y})`"
         @block-dragend="lastEvent = `block-dragend: ${$event.blockId}`"
       >
-        <template #block-hub><div class="card card--hub">Hub</div></template>
-        <template #block-a><div class="card">A</div></template>
-        <template #block-b><div class="card">B</div></template>
-        <template #block-c><div class="card">C</div></template>
+        <div
+          v-for="node in nodes"
+          :key="node.id"
+          v-vl-block="node.id"
+          class="card node"
+          :class="{ 'card--hub': node.hub }"
+          :style="{ top: `${node.top}px`, left: `${node.left}px` }"
+        >
+          {{ node.label }}
+        </div>
       </VisualLinker>
     </div>
   </section>
@@ -73,31 +73,14 @@ const connections: ConnectionDescriptor[] = [
   overflow: hidden;
 }
 
-:deep(.vl-container) {
+.canvas :deep(.vl-container) {
   height: 100%;
-  position: relative;
 }
 
-:deep(.vl-block) {
+.node {
   position: absolute;
   width: 120px;
   height: 60px;
-}
-:deep(.vl-block:nth-child(1)) {
-  top: 180px;
-  left: 340px;
-}
-:deep(.vl-block:nth-child(2)) {
-  top: 24px;
-  left: 48px;
-}
-:deep(.vl-block:nth-child(3)) {
-  top: 180px;
-  left: 48px;
-}
-:deep(.vl-block:nth-child(4)) {
-  top: 336px;
-  left: 48px;
 }
 
 .card {
@@ -111,12 +94,5 @@ const connections: ConnectionDescriptor[] = [
   background: var(--color-accent);
   color: #fff;
   border-color: var(--color-accent-dark);
-}
-
-:deep(.vl-draggable) {
-  cursor: grab;
-}
-:deep(.vl-dragging) {
-  cursor: grabbing;
 }
 </style>

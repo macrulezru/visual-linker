@@ -1,5 +1,5 @@
-import { h, nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { h } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionLayout, PortLayout } from '@macrulez/visual-linker-core'
 
@@ -44,16 +44,14 @@ describe('#marker overlay', () => {
         connections: [{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' } }],
       },
       slots: {
-        'block-a': () => 'A',
-        'block-b': () => 'B',
         marker: ({ position }: { position: 'start' | 'end' }) => h('i', position),
       },
       attachTo: document.body,
     })
-    await nextTick()
+    await flushPromises()
 
     emitLayout({ connections: [layout], ports: [] })
-    await nextTick()
+    await flushPromises()
 
     const markers = wrapper.findAll('.vl-marker')
     expect(markers).toHaveLength(2)
@@ -72,16 +70,14 @@ describe('#marker overlay', () => {
         connections: [{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { endMarker: 'arrow' } }],
       },
       slots: {
-        'block-a': () => 'A',
-        'block-b': () => 'B',
         marker: ({ position }: { position: 'start' | 'end' }) => h('i', position),
       },
       attachTo: document.body,
     })
-    await nextTick()
+    await flushPromises()
 
     emitLayout({ connections: [layout], ports: [] })
-    await nextTick()
+    await flushPromises()
 
     const markers = wrapper.findAll('.vl-marker')
     expect(markers).toHaveLength(1)

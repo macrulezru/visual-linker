@@ -10,8 +10,6 @@ import {
 const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
 const portSlotOptions: VisualLinkerOptions = { ...dragOptions, showPorts: false }
 
-const pair = [{ id: 'a' }, { id: 'b' }]
-
 function single(style: ConnectionDescriptor['style']): ConnectionDescriptor[] {
   return [{ id: 'c', from: { blockId: 'a' }, to: { blockId: 'b' }, style }]
 }
@@ -45,7 +43,6 @@ const bareEndConnections: ConnectionDescriptor[] = single({ endMarker: false })
 
 const labelConnections: ConnectionDescriptor[] = single({ endMarker: VLMarkerShapeEnum.ARROW })
 
-const portSlotBlocks = pair
 const portSlotConnections: ConnectionDescriptor[] = single({})
 </script>
 
@@ -60,9 +57,9 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
       <div v-for="demo in shapeDemos" :key="demo.title" class="demo">
         <h3>{{ demo.title }}</h3>
         <div class="canvas">
-          <VisualLinker :blocks="pair" :connections="demo.connections" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="demo.connections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -71,9 +68,9 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
         <h3>hoverStyle</h3>
         <p class="caption">hover the line — color, width, dashed and marker size all change together</p>
         <div class="canvas">
-          <VisualLinker :blocks="pair" :connections="hoverConnections" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="hoverConnections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
         </div>
       </div>
@@ -82,9 +79,9 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
         <h3>#marker slot</h3>
         <p class="caption"><code>endMarker: false</code> leaves a bare point for this custom shape to fill</p>
         <div class="canvas">
-          <VisualLinker :blocks="pair" :connections="bareEndConnections" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="bareEndConnections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
             <template #marker="{ position }">
               <span v-if="position === 'end'" class="custom-marker" />
             </template>
@@ -96,9 +93,9 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
         <h3>#port slot</h3>
         <p class="caption">full replacement for the built-in dot (here: <code>showPorts: false</code>)</p>
         <div class="canvas">
-          <VisualLinker :blocks="portSlotBlocks" :connections="portSlotConnections" :options="portSlotOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="portSlotConnections" :options="portSlotOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
             <template #port>
               <span class="custom-port" />
             </template>
@@ -110,9 +107,9 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
         <h3>#connection-label slot</h3>
         <p class="caption">arbitrary HTML positioned at the curve's real (curve-aware) midpoint</p>
         <div class="canvas">
-          <VisualLinker :blocks="pair" :connections="labelConnections" :options="dragOptions">
-            <template #block-a><div class="card">A</div></template>
-            <template #block-b><div class="card">B</div></template>
+          <VisualLinker :connections="labelConnections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
             <template #connection-label>
               <span class="connection-label">42ms</span>
             </template>
@@ -172,21 +169,20 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
   height: 180px;
 }
 
-:deep(.vl-container) {
-  position: relative;
+.canvas :deep(.vl-container) {
   height: 100%;
 }
 
-:deep(.vl-block) {
+.node {
   position: absolute;
   width: 52px;
   height: 30px;
 }
-:deep(.vl-block:nth-child(1)) {
+.tl {
   top: 16px;
   left: 16px;
 }
-:deep(.vl-block:nth-child(2)) {
+.br {
   bottom: 16px;
   right: 16px;
 }

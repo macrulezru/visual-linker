@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { createVisualLinker } = vi.hoisted(() => ({
@@ -23,7 +23,6 @@ afterEach(() => {
 function mountOne(options?: Record<string, unknown>) {
   return mount(VisualLinker, {
     props: { blocks: [{ id: 'a' }], connections: [], ...(options ? { options } : {}) },
-    slots: { 'block-a': () => 'A' },
     attachTo: document.body,
   })
 }
@@ -31,7 +30,7 @@ function mountOne(options?: Record<string, unknown>) {
 describe('option merge order: props.options > visualLinkerDefaults (Nuxt) > @macrulez/visual-linker-core default', () => {
   it('passes defaultCurve/showPorts through as undefined when nothing overrides them, so core applies its own default', async () => {
     const wrapper = mountOne()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const [, options] = createVisualLinker.mock.calls[0]!
     expect(options.defaultCurve).toBeUndefined()
@@ -43,7 +42,7 @@ describe('option merge order: props.options > visualLinkerDefaults (Nuxt) > @mac
   it('applies a Nuxt-level default (set via setVisualLinkerDefaults) when the component prop does not override it', async () => {
     setVisualLinkerDefaults({ defaultCurve: 'straight' })
     const wrapper = mountOne()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const [, options] = createVisualLinker.mock.calls[0]!
     expect(options.defaultCurve).toBe('straight')
@@ -54,7 +53,7 @@ describe('option merge order: props.options > visualLinkerDefaults (Nuxt) > @mac
   it('lets an explicit component-level option override the Nuxt-level default', async () => {
     setVisualLinkerDefaults({ defaultCurve: 'straight' })
     const wrapper = mountOne({ defaultCurve: 'bezier' })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const [, options] = createVisualLinker.mock.calls[0]!
     expect(options.defaultCurve).toBe('bezier')
@@ -64,7 +63,7 @@ describe('option merge order: props.options > visualLinkerDefaults (Nuxt) > @mac
 
   it('forwards every curve-geometry option (not just defaultCurve/showPorts) straight through to core', async () => {
     const wrapper = mountOne({ curvature: 0.8, curveMaxReach: 300, curveAngleBlend: 0.9, curveAngleMaxOffset: 45 })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const [, options] = createVisualLinker.mock.calls[0]!
     expect(options).toMatchObject({ curvature: 0.8, curveMaxReach: 300, curveAngleBlend: 0.9, curveAngleMaxOffset: 45 })
