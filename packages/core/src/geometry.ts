@@ -213,6 +213,31 @@ export function bezierMidpoint(
   return { x: (from.x + 3 * c1.x + 3 * c2.x + to.x) / 8, y: (from.y + 3 * c1.y + 3 * c2.y + to.y) / 8 }
 }
 
+/**
+ * The cubic bezier `bezierPath` would draw, flattened into `segments` straight
+ * pieces (`segments + 1` points) — for measuring along the curve, e.g.
+ * placing a label at a given fraction of its length.
+ */
+export function bezierPolyline(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  geometry: CurveGeometryOptions = DEFAULT_CURVE_GEOMETRY,
+  segments = 48,
+): Point[] {
+  const { c1, c2 } = bezierControlPoints(from, fromSide, to, toSide, geometry)
+  return Array.from({ length: segments + 1 }, (_, i) => {
+    const t = i / segments
+    const u = 1 - t
+    const [a, b, c, d] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]
+    return {
+      x: a * from.x + b * c1.x + c * c2.x + d * to.x,
+      y: a * from.y + b * c1.y + c * c2.y + d * to.y,
+    }
+  })
+}
+
 /** The angle of `vector`, in degrees (0° = pointing right, 90° = pointing down in screen coordinates). */
 export function angleDeg(vector: Point): number {
   return (Math.atan2(vector.y, vector.x) * 180) / Math.PI

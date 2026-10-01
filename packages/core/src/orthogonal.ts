@@ -53,36 +53,73 @@ export function orthogonalPoints(from: Point, fromSide: FixedSide, to: Point, to
   return [from, { x: from.x, y: to.y }, to]
 }
 
-/** Converts a straight-segment polyline into an SVG path with each interior corner rounded to `radius` (clamped to half the shorter adjoining segment). */
-export function roundedPolylinePath(points: Point[], radius: number): string {
+/**
+ * Hops over crossing lines: where a horizontal segment crosses another
+ * connection's vertical one it bulges into a small semicircle instead of
+ * running straight through. `bySegment` maps a segment index of the polyline
+ * (segment i runs from point i to point i + 1) to the x coordinates to hop at.
+ */
+export interface PathJumps {
+  radius: number
+  bySegment: ReadonlyMap<number, readonly number[]>
+}
+
+/** Emits the arcs along one straight run, in the direction of travel (the bulge always faces up). */
+function appendJumps(parts: string[], from: Point, to: Point, xs: readonly number[] | undefined, radius: number) {
+  if (!xs || radius <= 0 || Math.abs(from.y - to.y) > 0.01) return
+  const direction = to.x >= from.x ? 1 : -1
+  const ordered = [...xs].sort((a, b) => (a - b) * direction)
+  let lastEnd = from.x
+  for (const x of ordered) {
+    const before = x - direction * radius
+    const after = x + direction * radius
+    // Only arcs that fit inside this run and clear the previous one.
+    if ((before - lastEnd) * direction < 0 || (to.x - after) * direction < 0) continue
+    parts.push(`L ${before} ${from.y}`, `A ${radius} ${radius} 0 0 ${direction > 0 ? 1 : 0} ${after} ${from.y}`)
+    lastEnd = after
+  }
+}
+
+/** Converts a straight-segment polyline into an SVG path with each interior corner rounded to `radius` (clamped to half the shorter adjoining segment), optionally hopping over crossings (`jumps`). */
+export function roundedPolylinePath(points: Point[], radius: number, jumps?: PathJumps): string {
   if (points.length < 2) return ''
-  if (points.length === 2 || radius <= 0.5) {
-    return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+  const parts = [`M ${points[0]!.x} ${points[0]!.y}`]
+  let cursor = points[0]!
+  const rounded = points.length > 2 && radius > 0.5
+
+  const runTo = (to: Point, segment: number) => {
+    appendJumps(parts, cursor, to, jumps?.bySegment.get(segment), jumps?.radius ?? 0)
+    parts.push(`L ${to.x} ${to.y}`)
+    cursor = to
   }
 
-  const parts = [`M ${points[0]!.x} ${points[0]!.y}`]
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1]!
     const corner = points[i]!
+    if (!rounded) {
+      runTo(corner, i - 1)
+      continue
+    }
     const next = points[i + 1]!
 
     const inLength = Math.max(Math.hypot(corner.x - prev.x, corner.y - prev.y), 0.0001)
     const outLength = Math.max(Math.hypot(next.x - corner.x, next.y - corner.y), 0.0001)
     const r = Math.min(radius, inLength / 2, outLength / 2)
 
-    const start = {
+    const startOfCurve = {
       x: corner.x - ((corner.x - prev.x) * r) / inLength,
       y: corner.y - ((corner.y - prev.y) * r) / inLength,
     }
-    const end = {
+    const endOfCurve = {
       x: corner.x + ((next.x - corner.x) * r) / outLength,
       y: corner.y + ((next.y - corner.y) * r) / outLength,
     }
 
-    parts.push(`L ${start.x} ${start.y}`, `Q ${corner.x} ${corner.y} ${end.x} ${end.y}`)
+    runTo(startOfCurve, i - 1)
+    parts.push(`Q ${corner.x} ${corner.y} ${endOfCurve.x} ${endOfCurve.y}`)
+    cursor = endOfCurve
   }
-  const last = points[points.length - 1]!
-  parts.push(`L ${last.x} ${last.y}`)
+  runTo(points[points.length - 1]!, points.length - 2)
   return parts.join(' ')
 }
 
@@ -166,6 +203,19 @@ function dedupeConsecutive(points: Point[]): Point[] {
   return result
 }
 
+/**
+ * Re-routes the stretch between a connection's (branch-adjusted) endpoints.
+ * Gets the plain orthogonal route and may return a different one — e.g. one
+ * that goes around other blocks (see `routeAroundObstacles`).
+ */
+export type MiddleRouter = (
+  start: Point,
+  startSide: FixedSide,
+  end: Point,
+  endSide: FixedSide,
+  plain: Point[],
+) => Point[]
+
 /** The raw (pre-rounding) polyline a `smoothstep` connection follows — shared by `smoothstepPath` and `polylineMidpoint`. */
 export function smoothstepPoints(
   from: Point,
@@ -174,6 +224,7 @@ export function smoothstepPoints(
   toSide: FixedSide,
   fromBranch: BranchInfo | undefined,
   toBranch: BranchInfo | undefined,
+  routeMiddle?: MiddleRouter,
 ): Point[] {
   const startPoint = fromBranch ? fromBranch.branchPoint : from
   const startSide =
@@ -181,7 +232,8 @@ export function smoothstepPoints(
   const endPoint = toBranch ? toBranch.branchPoint : to
   const endSide = toBranch && !toBranch.isNearest ? perpendicularSideToward(toSide, toBranch.branchPoint, from) : toSide
 
-  const middle = orthogonalPoints(startPoint, startSide, endPoint, endSide)
+  const plain = orthogonalPoints(startPoint, startSide, endPoint, endSide)
+  const middle = routeMiddle ? routeMiddle(startPoint, startSide, endPoint, endSide, plain) : plain
 
   const points: Point[] = [from]
   if (fromBranch) points.push(fromBranch.branchPoint)

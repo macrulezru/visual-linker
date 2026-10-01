@@ -50,6 +50,34 @@ const smoothstepSolo: ConnectionDescriptor[] = [
   },
 ]
 
+// Same layout twice: a block sits between the endpoints. Drag it (or the others)
+// — with avoidObstacles the line re-routes around it live.
+const obstacleConnections = (avoidObstacles: boolean): ConnectionDescriptor[] => [
+  {
+    id: 'c',
+    from: { blockId: 'src' },
+    to: { blockId: 'dst' },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, avoidObstacles },
+  },
+]
+
+// Two lines crossing: with `jumps` the horizontal one hops over the vertical one.
+const crossingConnections = (jumps: boolean): ConnectionDescriptor[] => [
+  {
+    id: 'h',
+    from: { blockId: 'a' },
+    to: { blockId: 'b' },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, jumps },
+  },
+  {
+    id: 'v',
+    from: { blockId: 'c' },
+    to: { blockId: 'd' },
+    // Both lines opt in: whichever one ends up horizontal after you drag the blocks is the one that hops.
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, color: '#6d5bf6', jumps },
+  },
+]
+
 const fanoutConnections: ConnectionDescriptor[] = [
   {
     id: 'c1',
@@ -135,6 +163,47 @@ const fanoutConnections: ConnectionDescriptor[] = [
           </VisualLinker>
         </div>
       </div>
+
+      <div v-for="avoid in [false, true]" :key="String(avoid)" class="demo demo--wide">
+        <h3>
+          smoothstep <span class="muted">(avoidObstacles: {{ avoid }})</span>
+        </h3>
+        <p class="caption">
+          {{
+            avoid
+              ? 'routed around the block in the way — drag any block and the line re-routes, still with the fewest turns'
+              : 'the default: the line runs straight through whatever is in between'
+          }}
+        </p>
+        <div class="canvas canvas--tall">
+          <VisualLinker :connections="obstacleConnections(avoid)" :options="dragOptions">
+            <div v-vl-block="'src'" class="card node o-src">Src</div>
+            <div v-vl-block="'blocker'" class="card node o-blocker">In the way</div>
+            <div v-vl-block="'dst'" class="card node o-dst">Dst</div>
+          </VisualLinker>
+        </div>
+      </div>
+
+      <div v-for="jumps in [false, true]" :key="String(jumps)" class="demo demo--wide">
+        <h3>
+          smoothstep <span class="muted">(jumps: {{ jumps }})</span>
+        </h3>
+        <p class="caption">
+          {{
+            jumps
+              ? 'the horizontal line hops over the vertical one, like on a schematic — drag blocks to swap them: whichever line is horizontal hops'
+              : 'the default: crossing lines simply pass through each other'
+          }}
+        </p>
+        <div class="canvas canvas--tall">
+          <VisualLinker :connections="crossingConnections(jumps)" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node x-a">A</div>
+            <div v-vl-block="'b'" class="card node x-b">B</div>
+            <div v-vl-block="'c'" class="card node x-c">C</div>
+            <div v-vl-block="'d'" class="card node x-d">D</div>
+          </VisualLinker>
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -216,6 +285,46 @@ const fanoutConnections: ConnectionDescriptor[] = [
   right: 16px;
 }
 /* Its own transform composes with the drag offset, which uses `translate`. */
+.canvas--tall {
+  height: 220px;
+}
+.o-src {
+  top: 94px;
+  left: 16px;
+}
+.o-blocker {
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 76px;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+.o-dst {
+  top: 94px;
+  right: 16px;
+}
+
+.x-a {
+  top: 94px;
+  left: 16px;
+}
+.x-b {
+  top: 94px;
+  right: 16px;
+}
+.x-c {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.x-d {
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .left-mid {
   top: 50%;
   left: 16px;

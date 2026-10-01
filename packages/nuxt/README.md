@@ -88,14 +88,19 @@ to core's default is never silently shadowed by this module.
 
 #### Module options
 
-| Option                                                                                      | Mirrors                                |                                          |
-| ------------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------- |
-| `defaultCurve`                                                                              | `VisualLinkerOptions.defaultCurve`     | `'bezier' \| 'straight' \| 'smoothstep'` |
-| `showPorts`                                                                                 | `VisualLinkerOptions.showPorts`        |                                          |
-| `curvature` / `curveMinReach` / `curveMaxReach` / `curveAngleBlend` / `curveAngleMaxOffset` | matching `defaultCurveXxx` fields      | bezier geometry                          |
-| `dragGridSize`                                                                              | `VisualLinkerOptions.dragGridSize`     |                                          |
-| `portRadius` / `portColor` / `portStrokeColor` / `portStrokeWidth`                          | matching `defaultPortXxx` fields       | built-in port dot look                   |
-| `circleMarkerSize` / `squareMarkerSize` / `diamondMarkerSize` / `arrowMarkerSize`           | matching `defaultXxxMarkerSize` fields |                                          |
+| Option                                                                                      | Mirrors                                                  |                                                  |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------ |
+| `defaultCurve`                                                                              | `VisualLinkerOptions.defaultCurve`                       | `'bezier' \| 'straight' \| 'smoothstep'`         |
+| `showPorts`                                                                                 | `VisualLinkerOptions.showPorts`                          |                                                  |
+| `curvature` / `curveMinReach` / `curveMaxReach` / `curveAngleBlend` / `curveAngleMaxOffset` | matching `defaultCurveXxx` fields                        | bezier geometry                                  |
+| `dragGridSize`                                                                              | `VisualLinkerOptions.dragGridSize`                       |                                                  |
+| `portRadius` / `portColor` / `portStrokeColor` / `portStrokeWidth`                          | matching `defaultPortXxx` fields                         | built-in port dot look                           |
+| `circleMarkerSize` / `squareMarkerSize` / `diamondMarkerSize` / `arrowMarkerSize`           | matching `defaultXxxMarkerSize` fields                   |                                                  |
+| `portSpread`                                                                                | `VisualLinkerOptions.defaultPortSpread`                  | `true` or `{ gap, padding }`                     |
+| `jumps`                                                                                     | `VisualLinkerOptions.jumps`                              | `true` or `{ radius }` — hop over crossing lines |
+| `avoidObstacles` / `obstaclePadding`                                                        | `VisualLinkerOptions.avoidObstacles` / `obstaclePadding` | route `smoothstep` around other blocks           |
+| `animated`                                                                                  | `VisualLinkerOptions.defaultAnimated`                    | `true` or a `ConnectionFlow` object              |
+| `clipToScrollParents`                                                                       | `VisualLinkerOptions.clipToScrollParents`                | `true` / `'pin'` / `'hide'` / `false`            |
 
 **Not covered by module options** (set these directly on
 `<VisualLinker :options="...">`/`useVisualLinker()` instead):

@@ -1,6 +1,6 @@
 import { addComponent, addImports, addPlugin, createResolver, defineNuxtModule } from '@nuxt/kit'
 import type { NuxtModule } from '@nuxt/schema'
-import type { ConnectionCurve } from '@macrulez/visual-linker-vue'
+import type { ConnectionCurve, ConnectionFlow } from '@macrulez/visual-linker-vue'
 
 export interface ModuleOptions {
   /** Falls through to @macrulez/visual-linker-core's own default (VLConnectionCurveEnum.BEZIER) when unset. */
@@ -24,6 +24,18 @@ export interface ModuleOptions {
   squareMarkerSize?: number
   diamondMarkerSize?: number
   arrowMarkerSize?: number
+  /** Spreads connections sharing a port side into separate virtual ports — `true`, `{ gap, padding }`, or unset (off). */
+  portSpread?: boolean | { gap?: number; padding?: number }
+  /** What to do with a connection end scrolled out of a clipping ancestor: `'pin'` (`true`, default) to the visible edge, `'hide'` the connection, `false` ignore. */
+  clipToScrollParents?: boolean | 'pin' | 'hide'
+  /** Animated flow along every connection by default — `true` or a `ConnectionFlow` object; a connection can opt out with `animated: false`. */
+  animated?: boolean | ConnectionFlow
+  /** Route `smoothstep` connections around the other blocks instead of through them. */
+  avoidObstacles?: boolean
+  /** Clearance kept between a routed line and every other block, px. */
+  obstaclePadding?: number
+  /** Hop over crossing lines (`smoothstep`): `true` or `{ radius }`. */
+  jumps?: boolean | { radius?: number }
 }
 
 const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
@@ -59,6 +71,12 @@ const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOpt
       defaultSquareMarkerSize: options.squareMarkerSize,
       defaultDiamondMarkerSize: options.diamondMarkerSize,
       defaultArrowMarkerSize: options.arrowMarkerSize,
+      defaultPortSpread: options.portSpread,
+      clipToScrollParents: options.clipToScrollParents,
+      defaultAnimated: options.animated,
+      avoidObstacles: options.avoidObstacles,
+      obstaclePadding: options.obstaclePadding,
+      jumps: options.jumps,
     }
 
     // Registers v-vl-block / v-vl-port on both server and client.

@@ -54,6 +54,15 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
     { id: 'c2', from: { blockId: 'source', portId: 'out' }, to: { blockId: 'bottom' }, style },
   ]
 }
+
+// --- portSpread: three lines into one port, each on its own virtual port ---
+const spreadSources = ['s1', 's2', 's3']
+const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
+  id,
+  from: { blockId: id },
+  to: { blockId: 'target' },
+  style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 6 },
+}))
 </script>
 
 <template>
@@ -99,6 +108,44 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
             </div>
             <div data-vl-block="t1" class="card node tr">T1</div>
             <div data-vl-block="t2" class="card node br">T2</div>
+          </VisualLinker>
+        </div>
+      </div>
+
+      <div class="demo">
+        <h3>portSpread: { gap: 28 }</h3>
+        <p class="caption">
+          three lines into one port — each gets its own virtual port on that side, ordered by source
+        </p>
+        <div class="canvas">
+          <VisualLinker :connections="spreadConnections" :options="dragOptions">
+            <div v-for="(id, i) in spreadSources" :key="id" v-vl-block="id" class="card node" :class="`top-${i}`">
+              {{ id.toUpperCase() }}
+            </div>
+            <div v-vl-block="{ id: 'target', portSpread: { gap: 28 } }" class="card node wide bottom-center">
+              Target
+            </div>
+          </VisualLinker>
+        </div>
+      </div>
+
+      <div class="demo">
+        <h3>portSpread on a short side</h3>
+        <p class="caption">
+          <code>gap: 28</code> wouldn't fit this vertical side — the gap shrinks so the outer ports keep
+          <code>padding: 6</code> from the corners
+        </p>
+        <div class="canvas">
+          <VisualLinker :connections="spreadConnections" :options="dragOptions">
+            <div v-for="(id, i) in spreadSources" :key="id" v-vl-block="id" class="card node" :class="`left-${i}`">
+              {{ id.toUpperCase() }}
+            </div>
+            <div
+              v-vl-block="{ id: 'target', portSpread: { gap: 28, padding: 6 } }"
+              class="card node short right-center"
+            >
+              T
+            </div>
           </VisualLinker>
         </div>
       </div>
@@ -207,6 +254,50 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
 }
 .v-bottom {
   bottom: 16px;
+}
+
+.top-0 {
+  top: 16px;
+  left: 16px;
+}
+.top-1 {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.top-2 {
+  top: 16px;
+  right: 16px;
+}
+.wide {
+  width: 130px;
+}
+.bottom-center {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.left-0 {
+  left: 16px;
+  top: 16px;
+}
+.left-1 {
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.left-2 {
+  left: 16px;
+  bottom: 16px;
+}
+.short {
+  width: 40px;
+  height: 44px;
+}
+.right-center {
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .card.group {

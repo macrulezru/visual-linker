@@ -104,18 +104,20 @@ All three methods feed the same registry and can be mixed in one diagram.
 
 **2. Data attributes** — no JavaScript at all, handy for server-rendered or third-party markup:
 
-| Attribute                         | On         | Meaning                                                |
-| --------------------------------- | ---------- | ------------------------------------------------------ |
-| `data-vl-block="id"`              | block      | registers the element as a block                       |
-| `data-vl-draggable`               | block      | `""`/`"true"` → draggable, `"false"` → not             |
-| `data-vl-drag-handle=".sel"`      | block      | drag handle, a selector inside the block               |
-| `data-vl-drag-bounds="container"` | block      | `container`, or a CSS selector of the fence element    |
-| `data-vl-port="id"`               | port       | registers a port on the nearest block around it        |
-| `data-vl-port-block="id"`         | port       | …or on this block explicitly                           |
-| `data-vl-side="left right"`       | port       | one side, or a space/comma-separated candidate list    |
-| `data-vl-offset="0.3"`            | port       | position along the side, 0..1                          |
-| `data-vl-anchor="id"`             | port       | `anchorBlockId` — draw on that block's border instead  |
-| `data-vl-linker="name"`           | block/port | assign to the `<VisualLinker name="…">` with this name |
+| Attribute                         | On         | Meaning                                                  |
+| --------------------------------- | ---------- | -------------------------------------------------------- |
+| `data-vl-block="id"`              | block      | registers the element as a block                         |
+| `data-vl-draggable`               | block      | `""`/`"true"` → draggable, `"false"` → not               |
+| `data-vl-drag-handle=".sel"`      | block      | drag handle, a selector inside the block                 |
+| `data-vl-drag-bounds="container"` | block      | `container`, or a CSS selector of the fence element      |
+| `data-vl-port="id"`               | port       | registers a port on the nearest block around it          |
+| `data-vl-port-block="id"`         | port       | …or on this block explicitly                             |
+| `data-vl-side="left right"`       | port       | one side, or a space/comma-separated candidate list      |
+| `data-vl-offset="0.3"`            | port       | position along the side, 0..1                            |
+| `data-vl-anchor="id"`             | port       | `anchorBlockId` — draw on that block's border instead    |
+| `data-vl-port-spread="24 8"`      | block      | `portSpread`: `""` on, `"false"` off, or `gap [padding]` |
+| `data-vl-spread="false"`          | port       | the port's own `spread`, same values                     |
+| `data-vl-linker="name"`           | block/port | assign to the `<VisualLinker name="…">` with this name   |
 
 **3. The `blocks` prop** — for refs held in `<script>`, or elements you can't add attributes to:
 
@@ -157,11 +159,31 @@ In page scope the lines are drawn in a `position: fixed` layer covering the view
 | `options`     | `VisualLinkerOptions`    | passed to `createVisualLinker()` once, on mount — see [`@macrulez/visual-linker-core`](https://www.npmjs.com/package/@macrulez/visual-linker-core) |
 | `scope`       | `'container' \| 'page'`  | default `'container'`                                                                                                                              |
 | `name`        | `string`                 | lets elements elsewhere claim this instance via `data-vl-linker` / the directives' `linker`                                                        |
+| `selected`    | `string[]`               | ids of selected connections (`v-model:selected`), needs `options.selectable`                                                                       |
 | `zIndex`      | `number \| string`       | stacking order of the drawing layer                                                                                                                |
 
 Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 `block-drag`, `block-dragend`, `block-mouseenter`, `block-mouseleave`,
 `connection-click`, `connection-mouseenter`, `connection-mouseleave`.
+
+#### Selecting connections
+
+```vue
+<VisualLinker
+  v-model:selected="selected"
+  :connections="connections"
+  :options="{ selectable: true }"
+  @connection-delete-request="(requested) => remove(requested)"
+>
+  …
+</VisualLinker>
+```
+
+`selected` is an array of connection ids; leave it unset to let the engine own
+the selection. `@connection-selectionchange` receives the same array,
+`@connection-delete-request` the connections to delete (Delete/Backspace on a
+focused line) — you decide whether to remove them. See the core README for the
+full keyboard/ARIA behaviour and `style.selectedStyle`.
 
 #### Overlay slots
 
@@ -178,6 +200,11 @@ Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
   </VisualLinker>
 </template>
 ```
+
+With `labels` on a connection (see the core README) `#connection-label` is called
+once per label _without_ `text` — `{ connection, label, point, angle, rotation }` —
+while labels with `text` are drawn by the engine; without `labels` it is called
+once, at the line's midpoint, as before.
 
 Each slot is only built if actually used. `#marker` only renders for an
 endpoint without an explicit `startMarker`/`endMarker` in its `style` —

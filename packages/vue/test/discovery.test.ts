@@ -261,6 +261,35 @@ describe('block/port discovery', () => {
   })
 })
 
+describe('portSpread / spread markup', () => {
+  it('reads data-vl-port-spread on blocks, data-vl-spread on ports, and the directive options', async () => {
+    mount(
+      defineComponent({
+        setup: () => () =>
+          h(VisualLinker, { connections: [] }, () => [
+            h('div', { 'data-vl-block': 'a', 'data-vl-port-spread': '24 4' }, [
+              h('span', { 'data-vl-port': 'off', 'data-vl-spread': 'false' }),
+              h('span', { 'data-vl-port': 'on', 'data-vl-spread': '' }),
+            ]),
+            withDirectives(h('div', [withDirectives(h('span'), [[vVlPort, { id: 'p', spread: { gap: 40 } }]])]), [
+              [vVlBlock, { id: 'b', portSpread: true }],
+            ]),
+          ]),
+      }),
+      { attachTo: document.body },
+    )
+    await settle()
+
+    const a = byId(lastBlocks(), 'a')!
+    expect(a.portSpread).toEqual({ gap: 24, padding: 4 })
+    expect(a.ports!.map((port) => port.spread)).toEqual([false, true])
+
+    const b = byId(lastBlocks(), 'b')!
+    expect(b.portSpread).toBe(true)
+    expect(b.ports![0]!.spread).toEqual({ gap: 40 })
+  })
+})
+
 describe('directive SSR props', () => {
   it('emits the discovery attributes so server-rendered markup is already marked', () => {
     expect(vVlBlock.getSSRProps!({ value: { id: 'a', linker: 'main' } } as never, {} as never)).toEqual({

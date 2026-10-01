@@ -89,3 +89,56 @@ describe('#connection-label overlay', () => {
     wrapper.unmount()
   })
 })
+
+describe('#connection-label with `labels`', () => {
+  const connection = {
+    id: 'ab',
+    from: { blockId: 'a' },
+    to: { blockId: 'b' },
+    labels: [
+      { id: 'drawn', position: 'middle' as const, text: 'drawn by the engine' },
+      { id: 'start', position: 'start' as const, rotate: true },
+      { id: 'end', position: 0.9 as const },
+    ],
+  }
+  const placed = (id: string, x: number, rotation = 0, text?: string) => ({
+    id,
+    point: { x, y: 5 },
+    angle: rotation,
+    rotation,
+    text,
+  })
+
+  it('calls the slot once per label without `text`, at its own point and rotation, passing the label itself', async () => {
+    const wrapper = mount(VisualLinker, {
+      props: { connections: [connection] },
+      slots: {
+        'connection-label': ({ label, rotation }: { label?: { id: string }; rotation: number }) =>
+          h('i', `${label?.id}:${rotation}`),
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    emitLayout({
+      connections: [
+        {
+          id: 'ab',
+          from: { x: 0, y: 0 },
+          to: { x: 100, y: 0 },
+          mid: { x: 50, y: 0 },
+          labels: [placed('drawn', 50, 0, 'drawn by the engine'), placed('start', 20, -30), placed('end', 90)],
+        },
+      ],
+    })
+    await flushPromises()
+
+    const boxes = wrapper.findAll('.vl-connection-label')
+    expect(boxes).toHaveLength(2) // the one with `text` is the engine's, not the slot's
+    expect(boxes[0]!.text()).toBe('start:-30')
+    expect(boxes[0]!.attributes('style')).toContain('left: 20px')
+    expect(boxes[0]!.attributes('style')).toContain('rotate(-30deg)')
+    expect(boxes[1]!.text()).toBe('end:0')
+    wrapper.unmount()
+  })
+})

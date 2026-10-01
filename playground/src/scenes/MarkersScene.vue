@@ -44,6 +44,22 @@ const bareEndConnections: ConnectionDescriptor[] = single({ endMarker: false })
 const labelConnections: ConnectionDescriptor[] = single({ endMarker: VLMarkerShapeEnum.ARROW })
 
 const portSlotConnections: ConnectionDescriptor[] = single({})
+
+// Several labels per line, anywhere on it. Those with `text` are drawn by the
+// library itself (no Vue needed); the one without is positioned for the slot.
+const multiLabelConnections: ConnectionDescriptor[] = [
+  {
+    id: 'c',
+    from: { blockId: 'a' },
+    to: { blockId: 'b' },
+    style: { endMarker: VLMarkerShapeEnum.ARROW },
+    labels: [
+      { id: 'from', position: 'start', text: 'POST' },
+      { id: 'rate', position: 0.5, text: 'follows the line', rotate: true, offset: -14 },
+      { id: 'status', position: 0.82, offset: 16 },
+    ],
+  },
+]
 </script>
 
 <template>
@@ -116,6 +132,24 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
           </VisualLinker>
         </div>
       </div>
+
+      <div class="demo demo--wide">
+        <h3>labels</h3>
+        <p class="caption">
+          <code>labels: [{ position: 'start' | 'middle' | 'end' | 0..1, offset, rotate, text }]</code> — any number,
+          anywhere on the line. With <code>text</code> the library draws them; without it the
+          <code>#connection-label</code> slot is called once per label.
+        </p>
+        <div class="canvas">
+          <VisualLinker :connections="multiLabelConnections" :options="dragOptions">
+            <div v-vl-block="'a'" class="card node tl">A</div>
+            <div v-vl-block="'b'" class="card node br">B</div>
+            <template #connection-label>
+              <span class="connection-label">200 OK</span>
+            </template>
+          </VisualLinker>
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -142,6 +176,10 @@ const portSlotConnections: ConnectionDescriptor[] = single({})
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.demo--wide {
+  grid-column: span 2;
 }
 
 .demo h3 {

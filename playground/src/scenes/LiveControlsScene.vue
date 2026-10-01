@@ -61,6 +61,14 @@ const hoverWidth = ref(4)
 const hoverDashed = ref(false)
 const hoverMarkerSize = ref(12)
 
+// --- animated flow ---
+const animatedEnabled = ref(false)
+const flowShape = ref<'dashes' | 'dots'>('dashes')
+const flowSpeed = ref(60)
+const flowDirection = ref<'forward' | 'backward'>('forward')
+const flowCustomColor = ref(false)
+const flowColor = ref('#ffffff')
+
 // --- label ---
 const labelEnabled = ref(true)
 const labelText = ref('payload')
@@ -89,6 +97,14 @@ const connections = computed<ConnectionDescriptor[]>(() => {
       startStrokeWidth.value,
     ),
     endMarker: markerConfig(endShape.value, endColor.value, endSize.value, endStrokeColor.value, endStrokeWidth.value),
+    animated: animatedEnabled.value
+      ? {
+          shape: flowShape.value,
+          speed: flowSpeed.value,
+          direction: flowDirection.value,
+          color: flowCustomColor.value ? flowColor.value : undefined,
+        }
+      : undefined,
     hoverStyle: hoverEnabled.value
       ? {
           color: hoverColor.value,
@@ -317,6 +333,39 @@ const shapeOptions: { value: ShapeChoice; label: string }[] = [
           >
             {{ hoverPreviewOn ? 'Stop hover preview' : 'Simulate hover' }}
           </button>
+        </div>
+
+        <div class="panel">
+          <p class="panel-title">Flow animation</p>
+          <label class="field-row" style="margin-bottom: 12px; font-size: 12px; color: var(--color-text-muted)">
+            <input v-model="animatedEnabled" type="checkbox" /> animated
+          </label>
+          <template v-if="animatedEnabled">
+            <div class="field">
+              <label>shape</label>
+              <select v-model="flowShape">
+                <option value="dashes">dashes</option>
+                <option value="dots">dots</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>direction</label>
+              <select v-model="flowDirection">
+                <option value="forward">forward (from → to)</option>
+                <option value="backward">backward</option>
+              </select>
+            </div>
+            <div class="field">
+              <label
+                >speed (px/s) <span class="value">{{ flowSpeed }}</span></label
+              >
+              <input v-model.number="flowSpeed" type="range" min="10" max="300" step="5" />
+            </div>
+            <label class="field-row" style="font-size: 12px; color: var(--color-text-muted)">
+              <input v-model="flowCustomColor" type="checkbox" /> custom color
+              <input v-if="flowCustomColor" v-model="flowColor" type="color" />
+            </label>
+          </template>
         </div>
 
         <div class="panel">

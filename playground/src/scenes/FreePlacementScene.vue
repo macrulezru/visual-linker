@@ -27,6 +27,8 @@ const pipelineStyle: ConnectionStyle = {
   width: 2,
   startMarker: portDot,
   endMarker: { ...portDot, arrow: true },
+  // Data flowing through the pipeline: dots travelling from source to sink.
+  animated: { shape: 'dots', speed: 50 },
 }
 
 function link(from: string, to: string): ConnectionDescriptor {
@@ -80,6 +82,15 @@ const assignments: ConnectionDescriptor[] = [
   from: { blockId: from! },
   to: { blockId: to! },
   style: { color: '#1fa97a', endMarker: VLMarkerShapeEnum.ARROW, startMarker: VLMarkerShapeEnum.CIRCLE },
+}))
+
+// --- 3. A port scrolled out of its scroller (clipToScrollParents) ---
+const scrollTargets = ['Archive', 'Review', 'Publish']
+const scrollConnections: ConnectionDescriptor[] = Array.from({ length: 8 }, (_, i) => ({
+  id: `item-${i + 1}`,
+  from: { blockId: `item-${i + 1}` },
+  to: { blockId: scrollTargets[i % scrollTargets.length]! },
+  style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, color: '#e0526c', width: 2, endMarker: VLMarkerShapeEnum.ARROW },
 }))
 </script>
 
@@ -136,6 +147,23 @@ const assignments: ConnectionDescriptor[] = [
       </DemoPanel>
     </div>
     <VisualLinker scope="page" name="assign" :connections="assignments" :options="{ showPorts: false }" />
+
+    <h2 class="section-title">Scrolled out of view — <code>clipToScrollParents</code></h2>
+    <p class="scene-intro">
+      Scroll the list: a row that leaves the scroller's visible area doesn't leave a line dangling over the page — its
+      end is pulled to the scroller's edge and its dot and arrow are dropped (<code>'pin'</code>, the default;
+      <code>'hide'</code> hides the whole line instead).
+    </p>
+    <VisualLinker :connections="scrollConnections" :options="{ defaultCornerRadius: 10 }">
+      <div class="scroll-demo">
+        <div class="scroller">
+          <div v-for="n in 8" :key="n" v-vl-block="`item-${n}`" class="chip">Item {{ n }}</div>
+        </div>
+        <div class="scroll-targets">
+          <div v-for="target in scrollTargets" :key="target" v-vl-block="target" class="chip">{{ target }}</div>
+        </div>
+      </div>
+    </VisualLinker>
   </section>
 </template>
 
@@ -194,6 +222,36 @@ const assignments: ConnectionDescriptor[] = [
   display: grid;
   grid-template-columns: 220px 1fr 220px;
   max-width: 760px;
+}
+
+.scroll-demo {
+  display: flex;
+  gap: 160px;
+  align-items: center;
+  max-width: 560px;
+}
+
+.scroller {
+  width: 200px;
+  height: 170px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.scroller .chip {
+  flex-shrink: 0;
+}
+
+.scroll-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .chip {

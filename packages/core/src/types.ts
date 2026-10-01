@@ -35,7 +35,27 @@ export interface PortDescriptor {
    * over `anchorBlockId` when both are set.
    */
   anchorEl?: HTMLElement
+  /** Overrides the block's `portSpread` for this port only. `false` turns spreading off here even when the block enables it. */
+  spread?: PortSpread
 }
+
+/**
+ * Spreading of connections that share one port side: instead of all meeting
+ * at one point, each gets its own "virtual port" along that side, `gap` px
+ * apart, centered on the port's own point and ordered by where each
+ * connection's other end is (so lines don't cross). If the row of virtual
+ * ports wouldn't fit inside the side minus `padding` at both ends, the gap
+ * shrinks until it does. Works the same on horizontal and vertical sides.
+ */
+export interface PortSpreadOptions {
+  /** Distance between neighbouring virtual ports, px. default 16 */
+  gap?: number
+  /** Minimum distance from the outermost virtual ports to the side's ends (the block's corners), px. default 8 */
+  padding?: number
+}
+
+/** `true` spreads with the defaults, an object tunes it, `false` explicitly disables an inherited setting. */
+export type PortSpread = boolean | PortSpreadOptions
 
 /** Inset, in px, from each edge of the reference box a `DragBounds` box is measured against — e.g. `{ top: 16 }` shrinks just the top edge by 16px. Unset edges default to 0 (flush with the reference box). */
 export interface DragBoundsInset {
@@ -70,6 +90,8 @@ export interface BlockDescriptor {
   dragHandle?: string | HTMLElement
   /** Overrides the instance-level `dragBounds` option for this block. */
   dragBounds?: DragBounds
+  /** Spreads connections sharing a port side of this block into separate virtual ports — see `PortSpreadOptions`. Overrides `defaultPortSpread`; a port's own `spread` overrides this. */
+  portSpread?: PortSpread
 }
 
 export type ConnectionCurve =
@@ -190,6 +212,52 @@ export interface ConnectionStyle {
      */
     markerSize?: number
   }
+  /**
+   * Overrides applied while this connection is selected (see
+   * `VisualLinkerOptions.selectable`) — same fields as `hoverStyle`, layered
+   * between the base style and `hoverStyle` (hover wins while both apply).
+   * Omitted => the default selected look: the same width bump a hover gets,
+   * plus a halo (`--vl-selected-color`).
+   */
+  selectedStyle?: NonNullable<ConnectionStyle['hoverStyle']>
+  /**
+   * Animates a pattern along the line, from `from` towards `to` — dashes or
+   * dots that show direction and "live" traffic. `true` takes the defaults, an
+   * object tunes them, `false` turns off a `defaultAnimated`. Drawn as a
+   * separate overlay on top of the line (so it composes with `dashed`,
+   * `hoverStyle` and markers), CSS-only, and disabled for users who prefer
+   * reduced motion. default off (or the instance's `defaultAnimated`)
+   */
+  animated?: boolean | ConnectionFlow
+  /** Route this `smoothstep` connection around other blocks (overrides the instance's `avoidObstacles`). */
+  avoidObstacles?: boolean
+  /** Hop over the lines this `smoothstep` connection crosses (overrides the instance's `jumps`; `false` opts out). See `VisualLinkerOptions.jumps`. */
+  jumps?: JumpsOption
+}
+
+/** `true` for the default hop (radius 5px), or `{ radius }`. */
+export type JumpsOption = boolean | { radius?: number }
+
+export interface ConnectionFlow {
+  /** Pattern speed, px per second. default 60 */
+  speed?: number
+  /** `'forward'` runs from `from` to `to`. default 'forward' */
+  direction?: 'forward' | 'backward'
+  /** `'dashes'` (default) or round `'dots'`. */
+  shape?: 'dashes' | 'dots'
+  /** Dash length, px (ignored for dots). default 8 */
+  dash?: number
+  /** Distance between dashes/dots, px. default 14 (12 for dots) */
+  gap?: number
+  /**
+   * Pattern color. Unset (the default) = "tint" mode: the pattern takes the
+   * line's own color and the line underneath is dimmed, so it works on any
+   * background. Set = drawn in this color over the unchanged line (pick one
+   * that contrasts with it).
+   */
+  color?: string
+  /** Stroke width, px. default: the line's width in tint mode; 60% of it (dots 120%, at least 2.5px) with an explicit `color` */
+  width?: number
 }
 
 export interface ConnectionEndpoint {
@@ -202,6 +270,48 @@ export interface ConnectionDescriptor {
   from: ConnectionEndpoint
   to: ConnectionEndpoint
   style?: ConnectionStyle
+  /** Accessible name of the line (`aria-label`). default: "Connection: {from block id} → {to block id}" */
+  ariaLabel?: string
+  /**
+   * Labels placed along the line — any number, anywhere on it. A label with
+   * `text` is drawn by the library itself (an SVG pill); one without is
+   * positioned for you in the `layout` event (and rendered by the Vue
+   * `#connection-label` slot). Omit `labels` entirely to keep the single
+   * `#connection-label` slot at the line's midpoint.
+   */
+  labels?: ConnectionLabel[]
+}
+
+export interface ConnectionLabel {
+  /** Unique within the connection. */
+  id: string
+  /**
+   * Where along the line: `'start'`/`'end'` sit a short distance in from that
+   * endpoint (clear of its marker), `'middle'` halfway, a number is a fraction
+   * of the line's length (0..1).
+   */
+  position: 'start' | 'middle' | 'end' | number
+  /** Distance from the line, px, along its normal — positive is to the right of the direction of travel (below a rightward line). default 0 */
+  offset?: number
+  /** Text for a library-drawn label. Without it the label is just a position for your own content. */
+  text?: string
+  /** CSS class added to a library-drawn label's `<g>` (style the pill via `.vl-label-bg` / `.vl-label-text`). */
+  className?: string
+  /** Rotate the label to follow the line (kept upright, never upside down). default false */
+  rotate?: boolean
+}
+
+/** A resolved label position for the current render — see `ConnectionLayout.labels`. */
+export interface LabelLayout {
+  id: string
+  /** Where to center the label (the line's point plus `offset` along the normal). */
+  point: Point
+  /** Degrees, direction of travel along the line at that point. */
+  angle: number
+  /** Degrees to rotate the label by: the upright version of `angle` when `rotate` is set, else 0. */
+  rotation: number
+  text?: string
+  className?: string
 }
 
 export interface VisualLinkerOptions {
@@ -255,6 +365,51 @@ export interface VisualLinkerOptions {
   dragGridSize?: number
   /** Instance-wide default for `BlockDescriptor.dragBounds`, overridable per block. default undefined (unconstrained) */
   dragBounds?: DragBounds
+  /** Instance-wide default for `BlockDescriptor.portSpread`, overridable per block and per port. default undefined (connections share one point) */
+  defaultPortSpread?: PortSpread
+  /**
+   * What to do with a connection end whose port sits inside a clipping
+   * ancestor (an `overflow: auto/hidden/scroll/clip` element between the
+   * port's element and the container) but has been scrolled out of view:
+   * `'pin'` (`true`, the default) pulls that end to the edge of the visible
+   * area — the line "continues off-screen" — and drops its marker and port dot;
+   * `'hide'` hides the whole connection; `false` ignores clipping entirely
+   * (the line is drawn all the way to the invisible block, over whatever lies there).
+   */
+  clipToScrollParents?: boolean | 'pin' | 'hide'
+  /**
+   * Makes connections selectable and keyboard-operable: each becomes a
+   * focusable button (Tab order = `connections` order); click or Enter/Space
+   * selects it (Ctrl/Cmd/Shift-click or the same keys toggle it within a
+   * multi-selection); Escape or a click anywhere else clears the selection;
+   * Delete/Backspace emits `connection:delete-request` — the library never
+   * removes data itself. Selection changes emit `connection:selectionchange`;
+   * `setSelectedConnections()` sets it programmatically (controlled use).
+   * default false
+   */
+  selectable?: boolean
+  /** Instance-wide default for `ConnectionStyle.animated`, overridable per connection (`animated: false` opts one out). default off */
+  defaultAnimated?: boolean | ConnectionFlow
+  /**
+   * Routes `curve: 'smoothstep'` connections around the other blocks instead of
+   * through them (A* over the blocks' padded edges, fewest turns first).
+   * Blocks that are an endpoint of the connection — or contain/are contained
+   * by one — are not obstacles. A connection whose plain route is already
+   * clear is left exactly as it was; when no route exists the plain one is
+   * kept. Only blocks within ~240px of a connection are considered. default false
+   */
+  avoidObstacles?: boolean
+  /** Clearance kept between a routed line and every other block, px. default 12 */
+  obstaclePadding?: number
+  /**
+   * Draws a small semicircular hop where a `smoothstep` line crosses another
+   * connection's line, like on electrical schematics — the line with the
+   * horizontal stretch hops over the vertical one. Lines running along each
+   * other (a shared trunk), T-junctions and crossings too close to a bend are
+   * not hopped. Overridable per connection via `ConnectionStyle.jumps`.
+   * default false
+   */
+  jumps?: JumpsOption
 }
 
 /** A connection's resolved geometry for the current render — for positioning arbitrary overlay content (e.g. a label or a custom marker) without re-deriving the curve math. */
@@ -268,6 +423,12 @@ export interface ConnectionLayout {
   fromAngle: number
   /** Degrees, direction of travel along the path arriving at `to` — matches what a native SVG `marker-end` with `orient="auto"` would compute. */
   toAngle: number
+  /** Every `ConnectionDescriptor.labels` entry, resolved to a position on the line (empty without `labels`). */
+  labels: LabelLayout[]
+  /** True when `from` was pulled to the edge of a clipping ancestor (see `clipToScrollParents`) — the real port is out of view, so a custom marker there should not be drawn. */
+  fromClipped?: boolean
+  /** Same as `fromClipped`, for `to`. */
+  toClipped?: boolean
 }
 
 /**
@@ -295,6 +456,10 @@ export interface VisualLinkerEventMap {
   'connection:click': { connection: ConnectionDescriptor }
   'connection:mouseenter': { connection: ConnectionDescriptor }
   'connection:mouseleave': { connection: ConnectionDescriptor }
+  /** The set of selected connections changed (`selectable` mode) — fired for user input only, not for `setSelectedConnections()`. */
+  'connection:selectionchange': { selectedIds: string[] }
+  /** Delete/Backspace pressed on a focused connection: the selected ones (or just the focused one when it isn't selected). Nothing is removed — the app decides. */
+  'connection:delete-request': { connections: ConnectionDescriptor[] }
   /** Fired at the end of every render pass with every connection's/port's resolved geometry — drives Vue's HTML overlay for connection labels and custom port content. */
   layout: { connections: ConnectionLayout[]; ports: PortLayout[] }
 }
