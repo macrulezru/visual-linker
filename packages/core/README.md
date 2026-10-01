@@ -110,6 +110,122 @@ linker.setBlocks([
 ])
 ```
 
+#### Spreading lines that share a port
+
+By default every connection attached to the same port side meets at one
+point. `portSpread` gives each of them its own virtual port along that side
+instead — `gap` px apart, centered on the port's own point, ordered by where
+each line's other end is (so they don't cross, and they re-order as blocks
+are dragged). If the row wouldn't fit inside the side minus `padding` at
+both corners, the gap shrinks until it does. Top/bottom and left/right
+sides alike.
+
+```ts
+linker.setBlocks([
+  { id: 'hub', el: hubEl, portSpread: { gap: 24, padding: 8 } }, // whole block
+  { id: 'list', el: listEl, ports: [{ id: 'out', spread: true }] }, // one port only
+])
+createVisualLinker(el, { defaultPortSpread: true }) // every block; `spread: false` opts a port back out
+```
+
+Priority: port `spread` > block `portSpread` > `defaultPortSpread`; `false` at
+any level switches an inherited setting off. Defaults: `gap: 16`, `padding: 8`.
+
+#### Hops at crossings
+
+```ts
+createVisualLinker(el, { jumps: true }) // or { jumps: { radius: 8 } }
+{ curve: 'smoothstep', jumps: false } // opt a single line out
+```
+
+Where a `smoothstep` line crosses another connection's line, its horizontal
+stretch makes a small semicircular hop over the vertical one — as on electrical
+schematics. Lines running along each other (a shared trunk), T-junctions and
+crossings too close to a bend are left alone. Combine with `avoidObstacles` for
+tidy diagrams.
+
+#### Routing around blocks
+
+```ts
+createVisualLinker(el, { avoidObstacles: true, obstaclePadding: 12 })
+{ curve: 'smoothstep', avoidObstacles: false } // opt a single connection out
+```
+
+By default `smoothstep` lines run straight through any block that happens to
+be in between. With `avoidObstacles` they are routed around the other blocks
+(A* over the blocks' padded edges, fewest turns first), re-routing live as
+blocks are dragged. A line whose plain route is already clear is left exactly
+as it was; blocks that are an endpoint of the line (or contain / sit inside
+one) are not obstacles; and when no route exists the plain one is kept, so a
+line never disappears. Only blocks within ~240px of a line are considered.
+
+#### Labels along a line
+
+```ts
+{
+  id: 'a-b', from, to,
+  labels: [
+    { id: 'method', position: 'start', text: 'POST' },
+    { id: 'name', position: 0.5, text: 'follows the line', rotate: true, offset: -14 },
+    { id: 'custom', position: 'end' }, // no text: just a position, for your own content
+  ],
+}
+```
+
+`position` is `'start'` / `'middle'` / `'end'` (start/end sit a little in from
+the endpoint, clear of its marker) or a 0..1 fraction of the line's length;
+`offset` moves the label along the line's normal (positive = right of the
+direction of travel); `rotate` turns it to follow the line, kept upright.
+A label with `text` is drawn by the library as an SVG pill (style it with
+`--vl-label-bg` / `--vl-label-border` / `--vl-label-color`, or `className`
+and `.vl-label-bg` / `.vl-label-text`). Every label's resolved position is in
+`ConnectionLayout.labels` of the `layout` event, for rendering your own.
+
+#### Animated flow
+
+```ts
+{ id: 'a-b', from, to, style: { animated: true } }
+{ id: 'a-c', from, to, style: { animated: { shape: 'dots', speed: 50, direction: 'forward' } } }
+createVisualLinker(el, { defaultAnimated: true }) // every line; `animated: false` opts one out
+```
+
+A pattern travels along the line from `from` to `to` (or back with
+`direction: 'backward'`) — handy for live traffic and for showing direction.
+By default the pattern takes the line's own color and the line underneath is
+dimmed, so it reads on any background; give `color` to draw it in that color
+over the unchanged line instead. It is a separate overlay, so it composes with
+`dashed`, `hoverStyle` and markers; pure CSS (no per-frame JS) and switched off
+for `prefers-reduced-motion`.
+
+#### Selecting connections, keyboard and screen readers
+
+```ts
+const linker = createVisualLinker(el, { selectable: true })
+linker.on('connection:selectionchange', ({ selectedIds }) => {})
+linker.on('connection:delete-request', ({ connections }) => {}) // you remove them — or don't
+linker.setSelectedConnections(['a-b']) // controlled use; emits nothing
+```
+
+With `selectable`, every connection is a focusable button (Tab order = the
+order of `connections`). Click or Enter/Space selects it (Ctrl/Cmd/Shift
+toggles within a multi-selection); Escape or a click elsewhere clears the
+selection; Delete/Backspace asks to delete the selection — the library never
+removes data. Style a selected line with `style.selectedStyle` (same fields
+as `hoverStyle`, hover wins while both apply); the default is a width bump
+plus a halo (`--vl-selected-color`, focus ring: `--vl-focus-color`). Lines
+always carry `role="img"` and an `aria-label` — `ariaLabel` on the
+connection, or "Connection: {from} → {to}".
+
+#### Ports scrolled out of view
+
+A port inside an `overflow: auto/scroll/hidden/clip` element (a row in a
+scrolling list, say) that has scrolled out of the visible area no longer
+leaves a line dangling over unrelated content. By default
+(`clipToScrollParents: 'pin'`) that end is pulled to the edge of the visible
+area — the line "continues off-screen" — and its marker and port dot are
+dropped; `'hide'` hides the whole connection; `false` ignores clipping. The
+`layout` event flags such ends as `fromClipped`/`toClipped`.
+
 #### Connections and curves
 
 ```ts

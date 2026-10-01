@@ -1299,3 +1299,104 @@ describe('markers on endpoints shared with a highlighted connection', () => {
     engine.destroy()
   })
 })
+
+describe('portSpread', () => {
+  type Layout = { id: string; from: { x: number; y: number }; to: { x: number; y: number } }
+
+  /** Three sources above (or left of) one target sharing a single port; returns each connection's final endpoints. */
+  function fanIn(options: {
+    vertical?: boolean
+    targetSize?: number
+    targetPort?: Record<string, unknown>
+    block?: Record<string, unknown>
+    instance?: Record<string, unknown>
+    curve?: VLConnectionCurveEnum
+  }) {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const size = options.targetSize ?? 300
+    const sources = ['a', 'b', 'c'].map((id, i) =>
+      options.vertical
+        ? makeBlock(id, { left: 0, right: 100, top: i * 150, bottom: i * 150 + 40, width: 100, height: 40 })
+        : makeBlock(id, { left: i * 150, right: i * 150 + 100, top: 0, bottom: 40, width: 100, height: 40 }),
+    )
+    const target = options.vertical
+      ? makeBlock('t', {
+          left: 400,
+          right: 500,
+          top: 150 - size / 2 + 20,
+          bottom: 150 + size / 2 + 20,
+          width: 100,
+          height: size,
+        })
+      : makeBlock('t', {
+          left: 125 - size / 2 + 50,
+          right: 125 + size / 2 + 50,
+          top: 300,
+          bottom: 340,
+          width: size,
+          height: 40,
+        })
+    const engine = createVisualLinker(container, { showPorts: false, ...options.instance })
+    let layouts: Layout[] = []
+    engine.on('layout', ({ connections }) => (layouts = connections))
+    engine.setBlocks([
+      ...sources.map((el, i) => ({ id: ['a', 'b', 'c'][i]!, el })),
+      {
+        id: 't',
+        el: target,
+        ports: [
+          { id: 'in', side: options.vertical ? VLFixedSideEnum.LEFT : VLFixedSideEnum.TOP, ...options.targetPort },
+        ],
+        ...options.block,
+      },
+    ])
+    // Listed in an order that doesn't match the sources' layout, to prove sorting.
+    engine.setConnections(
+      ['c', 'a', 'b'].map((from) => ({
+        id: from,
+        from: { blockId: from },
+        to: { blockId: 't', portId: 'in' },
+        style: { curve: options.curve },
+      })),
+    )
+    const byId = Object.fromEntries(layouts.map((layout) => [layout.id, layout]))
+    engine.destroy()
+    return byId
+  }
+
+  it('without portSpread, every connection still meets at one point', () => {
+    const ends = fanIn({})
+    expect(new Set(Object.values(ends).map((layout) => layout.to.x)).size).toBe(1)
+  })
+
+  it('gives each connection its own point along a horizontal side, gap apart, ordered by the source position', () => {
+    const ends = fanIn({ block: { portSpread: { gap: 20 } } })
+    const center = 125 + 50 // the target's own center
+    expect([ends.a!.to.x, ends.b!.to.x, ends.c!.to.x]).toEqual([center - 20, center, center + 20])
+    expect(new Set([ends.a!.to.y, ends.b!.to.y, ends.c!.to.y])).toEqual(new Set([300]))
+  })
+
+  it('does the same along a vertical side', () => {
+    const ends = fanIn({ vertical: true, block: { portSpread: { gap: 30 } } })
+    expect([ends.a!.to.y, ends.b!.to.y, ends.c!.to.y]).toEqual([140, 170, 200])
+    expect(new Set([ends.a!.to.x, ends.b!.to.x, ends.c!.to.x])).toEqual(new Set([400]))
+  })
+
+  it('shrinks the gap so the outer ports stay `padding` away from the corners of a narrow block', () => {
+    const ends = fanIn({ targetSize: 40, block: { portSpread: { gap: 50, padding: 8 } } })
+    const left = 125 - 20 + 50
+    expect([ends.a!.to.x, ends.b!.to.x, ends.c!.to.x]).toEqual([left + 8, left + 20, left + 32])
+  })
+
+  it('resolves port → block → instance, with `false` switching an inherited setting off', () => {
+    expect(new Set(Object.values(fanIn({ instance: { defaultPortSpread: true } })).map((l) => l.to.x)).size).toBe(3)
+    const off = fanIn({ instance: { defaultPortSpread: true }, targetPort: { spread: false } })
+    expect(new Set(Object.values(off).map((l) => l.to.x)).size).toBe(1)
+  })
+
+  it('never merges spread smoothstep lines into a shared trunk', () => {
+    const ends = fanIn({ curve: VLConnectionCurveEnum.SMOOTHSTEP, block: { portSpread: true } })
+    expect(new Set(Object.values(ends).map((layout) => layout.to.x)).size).toBe(3)
+  })
+})

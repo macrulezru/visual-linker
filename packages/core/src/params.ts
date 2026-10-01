@@ -49,6 +49,10 @@ export const DEFAULT_SHOW_PORTS = true
 export const DEFAULT_DRAGGABLE = false
 /** Position along a port's side, or along a default (unspecified) port's own border, 0..1 (0.5 = center). */
 export const DEFAULT_PORT_OFFSET = 0.5
+/** `PortSpreadOptions.gap` default — px between neighbouring virtual ports of a spread port side. */
+export const DEFAULT_PORT_SPREAD_GAP = 16
+/** `PortSpreadOptions.padding` default — px kept clear between the outermost virtual ports and the block corners. */
+export const DEFAULT_PORT_SPREAD_PADDING = 8
 
 // --- Markers (markers.ts) ---
 // Each has a matching VisualLinkerOptions.defaultXxxMarkerSize field
@@ -92,6 +96,8 @@ export const DEFAULT_LINE_COLOR = '#2e8b57'
 export const DEFAULT_LINE_WIDTH = 1.5
 /** Added to the resolved stroke width while `.vl-connection--active` (hover/highlight) applies and no per-connection `hoverStyle.width` overrides it. */
 export const ACTIVE_LINE_WIDTH_BUMP = 1.5
+/** Halo color around a selected or keyboard-focused connection (`--vl-selected-color` / `--vl-focus-color` override it from CSS). */
+export const DEFAULT_SELECTION_COLOR = '#1f6feb'
 /** Width of the invisible, easier-to-hover stroke laid under every connection's visible line. */
 export const HIT_AREA_STROKE_WIDTH = 16
 export const DEFAULT_PORT_FILL = '#fff'
@@ -100,3 +106,48 @@ export const DEFAULT_PORT_STROKE_WIDTH = 1.5
 export const DEFAULT_PORT_RADIUS = 4
 /** `stroke-dasharray` applied when a connection's `dashed` (or `hoverStyle.dashed`) is true. */
 export const DASH_PATTERN = '6 4'
+
+// --- Animated flow along a connection (flow.ts / svg-layer.ts) ---
+
+/** Pattern speed, px per second. */
+export const DEFAULT_FLOW_SPEED = 60
+export const DEFAULT_FLOW_DASH = 8
+export const DEFAULT_FLOW_GAP = 14
+/** Gap between dots for `shape: 'dots'` (the dash itself is `FLOW_DOT_LENGTH` — a round cap makes the circle). */
+export const DEFAULT_FLOW_DOT_GAP = 12
+export const FLOW_DOT_LENGTH = 0.01
+/** Tint mode (no explicit `color`): the line underneath is dimmed to this opacity so the moving pattern, in the line's own color, stands out. */
+export const FLOW_TINT_BASE_OPACITY = 0.35
+/** Same, while the connection is hovered or selected. */
+export const FLOW_TINT_BASE_OPACITY_ACTIVE = 0.7
+/** With an explicit flow `color` the pattern is a highlight on the line: its width as a fraction of the line's own (dashes)… */
+export const FLOW_WIDTH_RATIO = 0.6
+/** …and for dots, with a floor so they stay visible on thin lines. */
+export const FLOW_DOT_WIDTH_RATIO = 1.2
+export const FLOW_DOT_MIN_WIDTH = 2.5
+/** Tint-mode dots: a bit wider than the line so they read as beads on it. */
+export const FLOW_TINT_DOT_WIDTH_RATIO = 1.6
+export const FLOW_TINT_DOT_MIN_WIDTH = 3
+
+// --- Connection labels (path-sampling.ts / svg-layer.ts) ---
+
+/** How far from the endpoint a `'start'`/`'end'` label sits, px along the path (capped at half the path). */
+export const LABEL_END_INSET = 24
+/** Horizontal/vertical padding around a built-in text label, px. */
+export const LABEL_PADDING_X = 6
+export const LABEL_PADDING_Y = 3
+export const LABEL_FONT_SIZE = 11
+/** Used to size a built-in label when text can't be measured (no layout engine). */
+export const LABEL_FALLBACK_CHAR_WIDTH = 6.4
+
+// --- Obstacle avoidance for 'smoothstep' (routing.ts / visual-linker.ts) ---
+
+/** Default clearance kept between a routed line and every other block, px. */
+export const DEFAULT_OBSTACLE_PADDING = 12
+/** Only blocks within this many px of a connection's bounding box are considered obstacles for it — keeps the search small on big diagrams. */
+export const ROUTE_REGION_MARGIN = 240
+
+// --- Line jumps / bridges at crossings (jumps.ts) ---
+
+/** Radius of the semicircular hop a line makes over a line it crosses, px. */
+export const DEFAULT_JUMP_RADIUS = 5

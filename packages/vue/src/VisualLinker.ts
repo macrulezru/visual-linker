@@ -61,6 +61,8 @@ export const VisualLinker = defineComponent({
     connections: { type: Array as PropType<ConnectionDescriptor[]>, required: true },
     blocks: { type: Array as PropType<VisualLinkerBlock[]>, default: () => [] },
     options: { type: Object as PropType<VisualLinkerOptions>, default: () => ({}) },
+    /** Ids of the selected connections (`v-model:selected`) — needs `options.selectable`. Leave unset to let the engine own the selection. */
+    selected: { type: Array as PropType<string[]>, default: undefined },
     scope: { type: String as PropType<VisualLinkerScope>, default: 'container' },
     /** Lets elements elsewhere claim this instance via `data-vl-linker="<name>"` / the directives' `linker` option. */
     name: { type: String, default: undefined },
@@ -71,6 +73,9 @@ export const VisualLinker = defineComponent({
     'connection-click',
     'connection-mouseenter',
     'connection-mouseleave',
+    'connection-selectionchange',
+    'connection-delete-request',
+    'update:selected',
     'block-dragstart',
     'block-drag',
     'block-dragend',
@@ -124,10 +129,17 @@ export const VisualLinker = defineComponent({
         // to @macrulez/visual-linker-core's own default — see config.ts.
         const created = createVisualLinker(el, { ...visualLinkerDefaults, ...props.options })
         created.setConnections(props.connections)
+        // After the connections: an id not (yet) in them would be pruned from the selection.
+        if (props.selected) created.setSelectedConnections(props.selected)
         unsubscribes = [
           created.on('connection:click', ({ connection }) => emit('connection-click', connection)),
           created.on('connection:mouseenter', ({ connection }) => emit('connection-mouseenter', connection)),
           created.on('connection:mouseleave', ({ connection }) => emit('connection-mouseleave', connection)),
+          created.on('connection:selectionchange', ({ selectedIds }) => {
+            emit('update:selected', selectedIds)
+            emit('connection-selectionchange', selectedIds)
+          }),
+          created.on('connection:delete-request', ({ connections }) => emit('connection-delete-request', connections)),
           created.on('block:dragstart', (payload) => emit('block-dragstart', payload)),
           created.on('block:drag', (payload) => emit('block-drag', payload)),
           created.on('block:dragend', (payload) => emit('block-dragend', payload)),
@@ -162,6 +174,14 @@ export const VisualLinker = defineComponent({
     )
 
     watch(
+      () => props.selected,
+      (next) => {
+        if (next) engine.value?.setSelectedConnections(next)
+      },
+      { deep: true },
+    )
+
+    watch(
       () => props.connections,
       (next) => engine.value?.setConnections(next),
       { deep: true },
@@ -186,24 +206,52 @@ export const VisualLinker = defineComponent({
       const children: VNode[] = []
 
       if (labelSlot) {
+        const labelBox = (key: string, point: { x: number; y: number }, rotation: number) => ({
+          key,
+          class: 'vl-connection-label',
+          style: {
+            position: 'absolute',
+            display: 'flex',
+            left: `${point.x}px`,
+            top: `${point.y}px`,
+            transform: `translate(-50%, -50%)${rotation ? ` rotate(${rotation}deg)` : ''}`,
+            pointerEvents: 'auto',
+          },
+        })
         for (const layout of connectionLayouts.value) {
           const connection = props.connections.find((candidate) => candidate.id === layout.id)
           if (!connection) continue
+
+          if (connection.labels?.length) {
+            // Labels with `text` are already drawn by the engine; the slot fills in the rest.
+            for (const placed of layout.labels ?? []) {
+              if (placed.text) continue
+              const label = connection.labels.find((candidate) => candidate.id === placed.id)
+              if (!label) continue
+              children.push(
+                h(
+                  'div',
+                  labelBox(`label:${layout.id}:${placed.id}`, placed.point, placed.rotation),
+                  labelSlot({
+                    connection,
+                    label,
+                    point: placed.point,
+                    angle: placed.angle,
+                    rotation: placed.rotation,
+                    from: layout.from,
+                    to: layout.to,
+                  }),
+                ),
+              )
+            }
+            continue
+          }
+
+          // No `labels`: the original single label at the line's midpoint.
           children.push(
             h(
               'div',
-              {
-                key: `label:${layout.id}`,
-                class: 'vl-connection-label',
-                style: {
-                  position: 'absolute',
-                  display: 'flex',
-                  left: `${layout.mid.x}px`,
-                  top: `${layout.mid.y}px`,
-                  transform: 'translate(-50%, -50%)',
-                  pointerEvents: 'auto',
-                },
-              },
+              labelBox(`label:${layout.id}`, layout.mid, 0),
               labelSlot({ connection, point: layout.mid, from: layout.from, to: layout.to }),
             ),
           )
@@ -239,11 +287,12 @@ export const VisualLinker = defineComponent({
           // An explicit startMarker/endMarker still wins (renders as the native
           // SVG marker it already was) — the slot only fills in where no
           // per-connection marker style was set, mirroring the built-in dot.
-          for (const [position, point, angle, explicit] of [
-            ['start', layout.from, layout.fromAngle, connection.style?.startMarker],
-            ['end', layout.to, layout.toAngle, connection.style?.endMarker],
+          for (const [position, point, angle, explicit, clipped] of [
+            ['start', layout.from, layout.fromAngle, connection.style?.startMarker, layout.fromClipped],
+            ['end', layout.to, layout.toAngle, connection.style?.endMarker, layout.toClipped],
           ] as const) {
-            if (explicit) continue
+            // A clipped end is pinned to a scroller's edge, not a real endpoint.
+            if (explicit || clipped) continue
             children.push(
               h(
                 'div',

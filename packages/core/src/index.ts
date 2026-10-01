@@ -16,6 +16,10 @@ export type {
   MarkerShape,
   MarkerConfig,
   MarkerArrowConfig,
+  ConnectionFlow,
+  JumpsOption,
+  ConnectionLabel,
+  LabelLayout,
   ConnectionEndpoint,
   ConnectionDescriptor,
   ConnectionLayout,
@@ -23,6 +27,8 @@ export type {
   VisualLinkerOptions,
   VisualLinkerEventMap,
   DragBounds,
+  PortSpread,
+  PortSpreadOptions,
   DragBoundsInset,
 } from './types'
 

@@ -18,6 +18,12 @@ export type VisualLinkerDefaults = Pick<
   | 'defaultSquareMarkerSize'
   | 'defaultDiamondMarkerSize'
   | 'defaultArrowMarkerSize'
+  | 'defaultPortSpread'
+  | 'clipToScrollParents'
+  | 'defaultAnimated'
+  | 'avoidObstacles'
+  | 'obstaclePadding'
+  | 'jumps'
 >
 
 /**

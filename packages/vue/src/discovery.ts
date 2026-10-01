@@ -1,5 +1,12 @@
 import { toValue } from 'vue'
-import type { BlockDescriptor, DragBounds, FixedSide, PortDescriptor, PortSide } from '@macrulez/visual-linker-core'
+import type {
+  BlockDescriptor,
+  DragBounds,
+  FixedSide,
+  PortDescriptor,
+  PortSide,
+  PortSpread,
+} from '@macrulez/visual-linker-core'
 import {
   resolveDragBoundsForCore,
   resolveElement,
@@ -22,6 +29,8 @@ export const VL_ATTR = {
   side: 'data-vl-side',
   offset: 'data-vl-offset',
   anchor: 'data-vl-anchor',
+  portSpread: 'data-vl-port-spread',
+  spread: 'data-vl-spread',
 } as const
 
 export const OBSERVED_ATTRS = Object.values(VL_ATTR).filter((attr) => attr !== VL_ATTR.root)
@@ -44,6 +53,8 @@ export interface VisualLinkerBlock {
   dragHandle?: RefFriendlyElement
   /** Overrides the `options.dragBounds` default for this block. */
   dragBounds?: RefFriendlyDragBounds
+  /** Overrides `options.defaultPortSpread` for this block. */
+  portSpread?: PortSpread
 }
 
 export interface BlockDirectiveOptions {
@@ -53,6 +64,8 @@ export interface BlockDirectiveOptions {
   draggable?: boolean
   dragHandle?: RefFriendlyElement
   dragBounds?: RefFriendlyDragBounds
+  /** Overrides `options.defaultPortSpread` for this block. */
+  portSpread?: PortSpread
 }
 /** `v-vl-block="'id'"` or `v-vl-block="{ id, ...options }"`. */
 export type BlockDirectiveValue = string | BlockDirectiveOptions
@@ -126,6 +139,16 @@ function parseSide(value: string | null): PortSide | FixedSide[] | undefined {
   return parts.filter((part) => part !== 'auto') as FixedSide[]
 }
 
+/** `""`/`"true"` → on with defaults, `"false"` → off, `"24"` → gap 24, `"24 4"` → gap 24 + padding 4. */
+function parseSpread(value: string | null): PortSpread | undefined {
+  if (value === null) return undefined
+  const trimmed = value.trim()
+  if (trimmed === '' || trimmed === 'true') return true
+  if (trimmed === 'false') return false
+  const [gap, padding] = trimmed.split(/[\s,]+/).map((part) => parseNumber(part))
+  return { ...(gap !== undefined ? { gap } : {}), ...(padding !== undefined ? { padding } : {}) }
+}
+
 function parseDragBounds(value: string | null): DragBounds | undefined {
   if (!value) return undefined
   if (value === 'container') return 'container'
@@ -163,6 +186,7 @@ function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
       directive?.dragBounds !== undefined
         ? resolveDragBoundsForCore(directive.dragBounds)
         : parseDragBounds(el.getAttribute(VL_ATTR.dragBounds)),
+    portSpread: directive?.portSpread ?? parseSpread(el.getAttribute(VL_ATTR.portSpread)),
   }
 }
 
@@ -173,6 +197,7 @@ function discoverPort(el: HTMLElement, id: string): PortDescriptor {
     side: parseSide(el.getAttribute(VL_ATTR.side)),
     offset: parseNumber(el.getAttribute(VL_ATTR.offset)),
     anchorBlockId: el.getAttribute(VL_ATTR.anchor) ?? undefined,
+    spread: parseSpread(el.getAttribute(VL_ATTR.spread)),
   }
   const directive = portDirectiveOptions.get(el)
   if (!directive) return fromAttributes
@@ -213,6 +238,7 @@ export function collectBlocks(scope: DiscoveryScope, explicit: readonly VisualLi
       draggable: block.draggable ?? discovered?.draggable,
       dragHandle: block.dragHandle !== undefined ? resolveElement(block.dragHandle) : discovered?.dragHandle,
       dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
+      portSpread: block.portSpread ?? discovered?.portSpread,
     })
   }
 
@@ -238,6 +264,12 @@ function sameSide(a: PortDescriptor['side'], b: PortDescriptor['side']): boolean
   return a === b
 }
 
+function sameSpread(a: PortSpread | undefined, b: PortSpread | undefined): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  return a.gap === b.gap && a.padding === b.padding
+}
+
 function sameBounds(a: DragBounds | undefined, b: DragBounds | undefined): boolean {
   if (a === b) return true
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
@@ -256,7 +288,8 @@ function samePorts(a: PortDescriptor[] = [], b: PortDescriptor[] = []): boolean 
         sameSide(port.side, other.side) &&
         port.offset === other.offset &&
         port.anchorBlockId === other.anchorBlockId &&
-        port.anchorEl === other.anchorEl
+        port.anchorEl === other.anchorEl &&
+        sameSpread(port.spread, other.spread)
       )
     })
   )
@@ -274,6 +307,7 @@ export function sameBlocks(a: readonly BlockDescriptor[], b: readonly BlockDescr
         block.draggable === other.draggable &&
         block.dragHandle === other.dragHandle &&
         sameBounds(block.dragBounds, other.dragBounds) &&
+        sameSpread(block.portSpread, other.portSpread) &&
         samePorts(block.ports, other.ports)
       )
     })
