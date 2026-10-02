@@ -31,7 +31,7 @@ watch(
 
 const states: VisualLinkerConfig = {
   blocks: { draggable: true, drag: { bounds: 'container' } },
-  interaction: { selectable: true },
+  interaction: { selectable: true, hover: true, highlight: true },
   lines: {
     width: 2,
     highlight: { width: 3 },

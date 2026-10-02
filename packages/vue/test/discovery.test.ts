@@ -165,6 +165,27 @@ describe('block/port discovery', () => {
     expect(a.ports![0]!.target).toBe(rowRef.value)
   })
 
+  it('reads `highlightable` from the directive, a data attribute and a `blocks` entry, in that order of weakness', async () => {
+    mount(
+      defineComponent({
+        setup: () => () =>
+          h(VisualLinker, { connections: [], blocks: [{ id: 'c', highlightable: false }] }, () => [
+            withDirectives(h('div'), [[vVlBlock, { id: 'a', highlightable: true }]]),
+            h('div', { 'data-vl-block': 'b', 'data-vl-highlightable': 'true' }),
+            h('div', { 'data-vl-block': 'c', 'data-vl-highlightable': 'true' }),
+            h('div', { 'data-vl-block': 'd' }),
+          ]),
+      }),
+      { attachTo: document.body },
+    )
+    await settle()
+
+    expect(byId(lastBlocks(), 'a')!.highlightable).toBe(true)
+    expect(byId(lastBlocks(), 'b')!.highlightable).toBe(true)
+    expect(byId(lastBlocks(), 'c')!.highlightable).toBe(false)
+    expect(byId(lastBlocks(), 'd')!.highlightable).toBeUndefined()
+  })
+
   it('keeps blocks of a nested <VisualLinker> out of the outer one', async () => {
     mount(
       defineComponent({

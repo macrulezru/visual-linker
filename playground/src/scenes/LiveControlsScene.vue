@@ -11,7 +11,10 @@ import {
 
 // Draggable, confined to the canvas — 'container' resolves to this
 // <VisualLinker>'s own root element.
-const linkerConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
+const linkerConfig: VisualLinkerConfig = {
+  blocks: { draggable: true, drag: { bounds: 'container' } },
+  interaction: { hover: true },
+}
 
 const targets = ['b1', 'b2', 'b3']
 

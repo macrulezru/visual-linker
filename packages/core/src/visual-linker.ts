@@ -342,7 +342,9 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     const cleanups: (() => void)[] = []
 
     const onMouseEnter = () => {
-      svg.setHighlightedConnections(incidentConnectionIds(block.id))
+      if (block.highlightable ?? config.interaction?.highlight ?? false) {
+        svg.setHighlightedConnections(incidentConnectionIds(block.id))
+      }
       emit('block:mouseenter', { blockId: block.id })
     }
     const onMouseLeave = () => {
@@ -692,6 +694,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
         toKey: endpointKey(connection.to, to.point),
         fromClipped: from.clipped,
         toClipped: to.clipped,
+        hoverable: connection.hoverable,
         ariaLabel: connection.ariaLabel ?? `Connection: ${connection.from.blockId} → ${connection.to.blockId}`,
       })
 

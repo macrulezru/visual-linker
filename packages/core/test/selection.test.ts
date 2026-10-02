@@ -13,7 +13,10 @@ function block(id: string, left: number, top: number): HTMLElement {
 function setup(options: Parameters<typeof createVisualLinker>[1] = { interaction: { selectable: true } }) {
   const container = document.createElement('div')
   document.body.appendChild(container)
-  const engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
+  const engine = createVisualLinker(
+    container,
+    mergeConfig({ ports: { show: false }, interaction: { hover: true, highlight: true } }, options),
+  )
   engine.setBlocks([
     { id: 'a', el: block('a', 0, 0) },
     { id: 'b', el: block('b', 300, 0) },
@@ -161,7 +164,10 @@ describe('selectable connections', () => {
     document.body.appendChild(container)
     const a = block('a', 0, 0)
     const b = block('b', 300, 0)
-    engine = createVisualLinker(container, { ports: { show: false }, interaction: { selectable: true } })
+    engine = createVisualLinker(container, {
+      ports: { show: false },
+      interaction: { selectable: true, hover: true, highlight: true },
+    })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },

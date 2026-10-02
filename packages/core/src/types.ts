@@ -38,6 +38,7 @@ export interface BlockDescriptor {
   dragHandle?: string | HTMLElement
   dragBounds?: DragBounds
   portSpread?: PortSpread
+  highlightable?: boolean
 }
 
 export type ConnectionCurve =
@@ -183,6 +184,8 @@ export interface BlocksConfig {
 }
 
 export interface InteractionConfig {
+  hover?: boolean
+  highlight?: boolean
   selectable?: boolean
   clipToScrollParents?: boolean | 'pin' | 'hide'
 }
@@ -238,6 +241,7 @@ export interface ConnectionDescriptor {
   from: ConnectionEndpoint
   to: ConnectionEndpoint
   style?: ConnectionStyle
+  hoverable?: boolean
   ariaLabel?: string
   labels?: ConnectionLabel[]
 }

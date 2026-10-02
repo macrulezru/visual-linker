@@ -22,6 +22,7 @@ export const VL_ATTR = {
   linker: 'data-vl-linker',
   block: 'data-vl-block',
   draggable: 'data-vl-draggable',
+  highlightable: 'data-vl-highlightable',
   dragHandle: 'data-vl-drag-handle',
   dragBounds: 'data-vl-drag-bounds',
   port: 'data-vl-port',
@@ -49,6 +50,8 @@ export interface VisualLinkerBlock {
   ports?: RefFriendlyPort[]
   /** Overrides the `options.draggable` default for this block. */
   draggable?: boolean
+  /** Overrides `config.interaction.highlight` for this block: hovering it highlights its connections. */
+  highlightable?: boolean
   /** CSS selector (inside the block), or a ref/getter/element, for the drag handle. */
   dragHandle?: RefFriendlyElement
   /** Overrides the `options.dragBounds` default for this block. */
@@ -62,6 +65,8 @@ export interface BlockDirectiveOptions {
   /** Assigns the block to the `<VisualLinker name="...">` with this name, wherever it sits on the page. */
   linker?: string
   draggable?: boolean
+  /** Overrides `config.interaction.highlight` for this block: hovering it highlights its connections. */
+  highlightable?: boolean
   dragHandle?: RefFriendlyElement
   dragBounds?: RefFriendlyDragBounds
   /** Overrides `config.ports.spread` for this block. */
@@ -178,6 +183,7 @@ function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
     id,
     el,
     draggable: directive?.draggable ?? parseBool(el.getAttribute(VL_ATTR.draggable)),
+    highlightable: directive?.highlightable ?? parseBool(el.getAttribute(VL_ATTR.highlightable)),
     dragHandle:
       directive?.dragHandle !== undefined
         ? resolveElement(directive.dragHandle)
@@ -236,6 +242,7 @@ export function collectBlocks(scope: DiscoveryScope, explicit: readonly VisualLi
       el,
       ports: block.ports?.map(resolvePortForCore) ?? discovered?.ports,
       draggable: block.draggable ?? discovered?.draggable,
+      highlightable: block.highlightable ?? discovered?.highlightable,
       dragHandle: block.dragHandle !== undefined ? resolveElement(block.dragHandle) : discovered?.dragHandle,
       dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
       portSpread: block.portSpread ?? discovered?.portSpread,
@@ -305,6 +312,7 @@ export function sameBlocks(a: readonly BlockDescriptor[], b: readonly BlockDescr
         block.id === other.id &&
         block.el === other.el &&
         block.draggable === other.draggable &&
+        block.highlightable === other.highlightable &&
         block.dragHandle === other.dragHandle &&
         sameBounds(block.dragBounds, other.dragBounds) &&
         sameSpread(block.portSpread, other.portSpread) &&

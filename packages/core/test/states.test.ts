@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker, type VisualLinker } from '../src/visual-linker'
 import { VLMarkerShapeEnum } from '../src/enums'
 import type { ConnectionStyle, VisualLinkerConfig } from '../src/types'
@@ -19,7 +20,7 @@ let engine: VisualLinker | undefined
 function setup(config: VisualLinkerConfig, style?: ConnectionStyle) {
   const container = document.createElement('div')
   document.body.appendChild(container)
-  engine = createVisualLinker(container, config)
+  engine = createVisualLinker(container, mergeConfig({ interaction: { hover: true, highlight: true } }, config))
   const a = block('a', 0, 0)
   const b = block('b', 300, 0)
   engine.setBlocks([
@@ -355,7 +356,7 @@ describe('changing the config at runtime', () => {
     setup({ lines: { color: 'red' } })
     engine!.setConfig({ lines: { width: 3 } })
     const copy = engine!.getConfig()
-    expect(copy).toEqual({ lines: { color: 'red', width: 3 } })
+    expect(copy).toEqual({ interaction: { hover: true, highlight: true }, lines: { color: 'red', width: 3 } })
     copy.lines!.color = 'changed'
     expect(engine!.getConfig().lines!.color).toBe('red')
   })

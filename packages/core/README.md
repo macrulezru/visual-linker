@@ -96,7 +96,7 @@ const linker = createVisualLinker(el, {
   ports: { show: true, radius: 4, fill: '#fff', stroke: '#2e8b57', hover: { radius: 6 }, spread: { gap: 16 } },
   labels: { background: '#fff', color: '#1c1e2b', fontSize: 11, hover: { background: '#eef' } },
   blocks: { draggable: true, drag: { grid: 20, bounds: 'container' } },
-  interaction: { selectable: true, clipToScrollParents: 'pin' },
+  interaction: { hover: true, highlight: true, selectable: true, clipToScrollParents: 'pin' },
 })
 ```
 
@@ -336,7 +336,10 @@ same four state buckets — `highlight`, `hover`, `selected`, `focus` — with t
 entity itself, so a marker can change its shape, size, colors or whole `svg` while
 its connection is hovered or selected. `hover` is the pointer over the line
 itself; `highlight` is a line lit because the pointer is on one of its blocks
-(it behaves like `hover` until a `highlight` bucket is set). States stack as base →
+(it behaves like `hover` until a `highlight` bucket is set). Both are off by default — turn them on
+with `interaction: { hover: true, highlight: true }`, or per entity with `hoverable` on a connection and
+`highlightable` on a block (the local value wins); without them a diagram does not react to the pointer and
+shows no pointer cursor, while the events still fire. States stack as base →
 `selected` → `highlight` → `hover` → `focus`, falling back to the base for any field left unset; a marker
 follows the line's color of the current state unless it sets its own.
 
