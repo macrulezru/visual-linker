@@ -1,8 +1,8 @@
 import { VLConnectionCurveEnum, VLMarkerShapeEnum, VLFixedSideEnum, VLOrientEnum } from './enums'
 import type { Point } from './geometry'
 
-export type FixedSide = VLFixedSideEnum.TOP | VLFixedSideEnum.RIGHT | VLFixedSideEnum.BOTTOM | VLFixedSideEnum.LEFT
-export type PortSide = FixedSide | VLFixedSideEnum.AUTO
+export type FixedSide = `${VLFixedSideEnum.TOP | VLFixedSideEnum.RIGHT | VLFixedSideEnum.BOTTOM | VLFixedSideEnum.LEFT}`
+export type PortSide = FixedSide | `${VLFixedSideEnum.AUTO}`
 
 export interface PortDescriptor {
   id: string
@@ -41,10 +41,10 @@ export interface BlockDescriptor {
 }
 
 export type ConnectionCurve =
-  VLConnectionCurveEnum.BEZIER | VLConnectionCurveEnum.STRAIGHT | VLConnectionCurveEnum.SMOOTHSTEP
+  `${VLConnectionCurveEnum.BEZIER | VLConnectionCurveEnum.STRAIGHT | VLConnectionCurveEnum.SMOOTHSTEP}`
 
 export type MarkerShape =
-  VLMarkerShapeEnum.CIRCLE | VLMarkerShapeEnum.SQUARE | VLMarkerShapeEnum.DIAMOND | VLMarkerShapeEnum.ARROW
+  `${VLMarkerShapeEnum.CIRCLE | VLMarkerShapeEnum.SQUARE | VLMarkerShapeEnum.DIAMOND | VLMarkerShapeEnum.ARROW}`
 
 export type VisualState = 'highlight' | 'hover' | 'selected' | 'focus'
 
@@ -69,7 +69,7 @@ export interface MarkerStyle {
   opacity?: number
   className?: string
   svg?: string
-  orient?: VLOrientEnum.AUTO | VLOrientEnum.FIXED
+  orient?: `${VLOrientEnum.AUTO | VLOrientEnum.FIXED}`
   arrow?: boolean | MarkerArrowConfig
 }
 

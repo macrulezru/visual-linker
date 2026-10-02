@@ -132,13 +132,13 @@ export function resolveAutoSide(from: Point, to: Point, candidates: readonly Fix
 /** Point on a rect's edge for the given side, offset 0..1 along that edge (0.5 = center). */
 export function sidePoint(rect: DOMRect, side: FixedSide, offset: number = DEFAULT_PORT_OFFSET): Point {
   switch (side) {
-    case VLFixedSideEnum.TOP:
+    case 'top':
       return { x: rect.left + rect.width * offset, y: rect.top }
-    case VLFixedSideEnum.BOTTOM:
+    case 'bottom':
       return { x: rect.left + rect.width * offset, y: rect.top + rect.height }
-    case VLFixedSideEnum.LEFT:
+    case 'left':
       return { x: rect.left, y: rect.top + rect.height * offset }
-    case VLFixedSideEnum.RIGHT:
+    case 'right':
       return { x: rect.left + rect.width, y: rect.top + rect.height * offset }
   }
 }
@@ -154,13 +154,13 @@ export function sidePoint(rect: DOMRect, side: FixedSide, offset: number = DEFAU
 export function projectedSidePoint(anchorRect: DOMRect, side: FixedSide, targetRect: DOMRect): Point {
   const targetCenter = { x: targetRect.left + targetRect.width / 2, y: targetRect.top + targetRect.height / 2 }
   switch (side) {
-    case VLFixedSideEnum.TOP:
+    case 'top':
       return { x: clamp(targetCenter.x, anchorRect.left, anchorRect.right), y: anchorRect.top }
-    case VLFixedSideEnum.BOTTOM:
+    case 'bottom':
       return { x: clamp(targetCenter.x, anchorRect.left, anchorRect.right), y: anchorRect.top + anchorRect.height }
-    case VLFixedSideEnum.LEFT:
+    case 'left':
       return { x: anchorRect.left, y: clamp(targetCenter.y, anchorRect.top, anchorRect.bottom) }
-    case VLFixedSideEnum.RIGHT:
+    case 'right':
       return { x: anchorRect.left + anchorRect.width, y: clamp(targetCenter.y, anchorRect.top, anchorRect.bottom) }
   }
 }

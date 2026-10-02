@@ -8,6 +8,7 @@ import MarkersScene from './scenes/MarkersScene.vue'
 import LiveControlsScene from './scenes/LiveControlsScene.vue'
 import FreePlacementScene from './scenes/FreePlacementScene.vue'
 import ThemesScene from './scenes/ThemesScene.vue'
+import RecipesScene from './scenes/RecipesScene.vue'
 
 const tabs = [
   { id: 'overview', label: 'Overview', component: OverviewScene },
@@ -18,6 +19,7 @@ const tabs = [
   { id: 'markers', label: 'Markers & overlays', component: MarkersScene },
   { id: 'themes', label: 'Themes & states', component: ThemesScene },
   { id: 'live', label: 'Live controls', component: LiveControlsScene },
+  { id: 'recipes', label: 'Recipes', component: RecipesScene },
 ] as const
 
 const activeTab = ref<(typeof tabs)[number]['id']>('overview')

@@ -28,7 +28,7 @@ export interface ResolvedMarker {
   opacity?: number
   className?: string
   svg?: string
-  orient: VLOrientEnum.AUTO | VLOrientEnum.FIXED
+  orient: `${VLOrientEnum.AUTO | VLOrientEnum.FIXED}`
   arrow?: { color: string; gap: number }
 }
 
@@ -50,11 +50,11 @@ export interface MarkerSizeDefaults {
  */
 function defaultMarkerSize(shape: MarkerShape | undefined, sizeDefaults: MarkerSizeDefaults): number {
   switch (shape) {
-    case VLMarkerShapeEnum.ARROW:
+    case 'arrow':
       return sizeDefaults.arrow ?? DEFAULT_ARROW_MARKER_SIZE
-    case VLMarkerShapeEnum.SQUARE:
+    case 'square':
       return sizeDefaults.square ?? DEFAULT_SQUARE_MARKER_SIZE
-    case VLMarkerShapeEnum.DIAMOND:
+    case 'diamond':
       return sizeDefaults.diamond ?? DEFAULT_DIAMOND_MARKER_SIZE
     default:
       return sizeDefaults.circle ?? DEFAULT_CIRCLE_MARKER_SIZE
@@ -135,17 +135,17 @@ function builtinShapeMarkup(
   const fill = `fill="${color}"`
   const stroke = strokeAttrs(strokeColor, strokeWidth)
   switch (shape) {
-    case VLMarkerShapeEnum.CIRCLE:
+    case 'circle':
       return `<circle cx="${CENTER}" cy="${CENTER}" r="${CIRCLE_MARKER_RADIUS}" ${fill} ${stroke} />`
-    case VLMarkerShapeEnum.SQUARE: {
+    case 'square': {
       const size = MARKER_VIEWBOX - SQUARE_MARKER_INSET * 2
       return `<rect x="${SQUARE_MARKER_INSET}" y="${SQUARE_MARKER_INSET}" width="${size}" height="${size}" ${fill} ${stroke} />`
     }
-    case VLMarkerShapeEnum.DIAMOND: {
+    case 'diamond': {
       const far = MARKER_VIEWBOX - DIAMOND_MARKER_INSET
       return `<polygon points="${CENTER},${DIAMOND_MARKER_INSET} ${far},${CENTER} ${CENTER},${far} ${DIAMOND_MARKER_INSET},${CENTER}" ${fill} ${stroke} />`
     }
-    case VLMarkerShapeEnum.ARROW:
+    case 'arrow':
       // Already an open, stroked chevron with no fill — `strokeColor` doesn't
       // apply here, `color` already IS its one stroke.
       return arrowMarkup(MARKER_VIEWBOX - ARROW_TIP_INSET, color)
@@ -161,11 +161,11 @@ export function shapeEdgeDistance(marker: ResolvedMarker): number {
   if (marker.svg || !marker.shape) return 0
   const halfStroke = marker.strokeColor ? marker.strokeWidth / 2 : 0
   switch (marker.shape) {
-    case VLMarkerShapeEnum.CIRCLE:
+    case 'circle':
       return CIRCLE_MARKER_RADIUS + halfStroke
-    case VLMarkerShapeEnum.SQUARE:
+    case 'square':
       return CENTER - SQUARE_MARKER_INSET + halfStroke
-    case VLMarkerShapeEnum.DIAMOND:
+    case 'diamond':
       // A 90° vertex: a mitered outline sticks out by halfStroke·√2 there.
       return CENTER - DIAMOND_MARKER_INSET + halfStroke * Math.SQRT2
     default:
