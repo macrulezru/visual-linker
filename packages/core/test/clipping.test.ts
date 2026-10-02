@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { clampToRect, clippingAncestors, visibleRect } from '../src/clipping'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker } from '../src/visual-linker'
 
 function rectOf(el: HTMLElement, left: number, top: number, width: number, height: number) {
@@ -71,7 +72,7 @@ describe('clipToScrollParents', () => {
     rectOf(outside, 500, 140, 100, 40)
     container.append(outside)
 
-    const engine = createVisualLinker(container, { showPorts: false, ...options })
+    const engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
     let layout: { from: { x: number; y: number }; fromClipped?: boolean } | undefined
     engine.on('layout', ({ connections }) => (layout = connections[0]))
     engine.setBlocks([
@@ -99,11 +100,11 @@ describe('clipToScrollParents', () => {
   })
 
   it("'hide' drops the whole connection, and `false` keeps drawing to the invisible block", () => {
-    const hidden = setup({ clipToScrollParents: 'hide' }, 300)
+    const hidden = setup({ interaction: { clipToScrollParents: 'hide' } }, 300)
     expect(hidden.container.querySelector('path.vl-connection')).toBeNull()
     hidden.engine.destroy()
 
-    const ignored = setup({ clipToScrollParents: false }, 300)
+    const ignored = setup({ interaction: { clipToScrollParents: false } }, 300)
     expect(ignored.layout()!.fromClipped).toBe(false)
     expect(ignored.layout()!.from.y).toBe(315)
     ignored.engine.destroy()

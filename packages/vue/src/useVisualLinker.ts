@@ -3,12 +3,14 @@ import {
   createVisualLinker,
   type ConnectionDescriptor,
   type VisualLinker,
-  type VisualLinkerOptions,
+  mergeConfig,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-core'
-import { visualLinkerDefaults } from './config'
+import { injectSharedConfig } from './sharedConfig'
 import { resolveBlocksForCore, type RefFriendlyBlock } from './refPorts'
 
-export interface UseVisualLinkerOptions extends VisualLinkerOptions {
+export interface UseVisualLinkerOptions {
+  config?: MaybeRefOrGetter<VisualLinkerConfig | undefined>
   blocks?: MaybeRefOrGetter<RefFriendlyBlock[]>
   connections?: MaybeRefOrGetter<ConnectionDescriptor[]>
 }
@@ -27,18 +29,16 @@ export function useVisualLinker(
   options: UseVisualLinkerOptions = {},
 ): UseVisualLinkerReturn {
   const engine = shallowRef<VisualLinker | null>(null)
+  const shared = injectSharedConfig()
+  const effectiveConfig = () => mergeConfig<VisualLinkerConfig>(shared, toValue(options.config))
   let stopSyncBlocks: (() => void) | null = null
 
   onMounted(() => {
     const el = toValue(container)
     if (!el || typeof window === 'undefined') return
 
-    // visualLinkerDefaults first, then options on top — see config.ts and
-    // VisualLinker.ts for why the merge order matters.
-    const createdEngine = createVisualLinker(el, {
-      ...visualLinkerDefaults,
-      ...options,
-    })
+    // The shared config from the app first, then this call's own config on top.
+    const createdEngine = createVisualLinker(el, effectiveConfig())
     engine.value = createdEngine
 
     // watchEffect (not a plain watch on options.blocks) so that a block/port's
@@ -60,6 +60,8 @@ export function useVisualLinker(
     engine.value?.destroy()
     engine.value = null
   })
+
+  watch(effectiveConfig, (next) => engine.value?.replaceConfig(next))
 
   if (options.connections) {
     watch(

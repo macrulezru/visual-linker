@@ -4,7 +4,7 @@
 
 Framework-agnostic engine that draws auto-routed SVG connector lines
 between DOM blocks you already control. No Vue — just
-`createVisualLinker(container, options)`, returning a small imperative
+`createVisualLinker(container, config)`, returning a small imperative
 API any framework adapter (or vanilla code) can drive directly.
 
 Part of the [visual-linker](https://github.com/macrulezru/visual-linker)
@@ -17,11 +17,11 @@ monorepo. Framework adapter:
 
 ## Features
 
-- **`createVisualLinker(container, options?)`** — measures the blocks you hand it (`setBlocks`) and draws the SVG path between their resolved ports (`setConnections`), batched onto a shared `ResizeObserver` + `requestAnimationFrame` render loop
+- **`createVisualLinker(container, config?)`** — measures the blocks you hand it (`setBlocks`) and draws the SVG path between their resolved ports (`setConnections`), batched onto a shared `ResizeObserver` + `requestAnimationFrame` render loop
 - **Auto-side port routing** — `side: 'auto'` (the default) picks whichever side of a block best faces the other endpoint on every render; a `FixedSide[]` narrows the automatic choice to a subset instead of fixing it outright
 - **Three curve types** — `bezier` (configurable curvature/reach/angle-lean), `smoothstep` (orthogonal routing with rounded corners and shared branch points for siblings on one port), `straight`
-- **Per-connection styling** — color, width, dashed, start/end markers (`circle`/`square`/`diamond`/`arrow`, or raw custom SVG), and a distinct hover style — instance-wide defaults, overridable per connection
-- **Pointer-driven drag & drop** — an optional `dragHandle`, a `dragGridSize` snap, and `dragBounds` confined to the container/an element/an inset box, re-resolved live on every pointer move
+- **Per-connection styling** — color, width, dashed, start/end markers (`circle`/`square`/`diamond`/`arrow`, or raw custom SVG), and and a distinct look for the hover, selected and focus states — one structured configuration for lines, markers, ports, labels and colors, overridable per connection, and changeable at runtime
+- **Pointer-driven drag & drop** — an optional `dragHandle`, a `blocks.drag.grid` snap, and `blocks.drag.bounds` confined to the container/an element/an inset box, re-resolved live on every pointer move
 - **A typed event API** — drag/hover/click events, plus a `layout` event fired on every render pass with every connection's and port's resolved geometry (points, angles, midpoints), for positioning your own overlay content
 - **Auto-managed positioning** — sets `container`'s CSS position to `relative` for you if it's still `static`, so the SVG overlay lines up with your blocks with zero required setup CSS
 - **Zero runtime dependencies, zero peer dependencies** — usable standalone in any environment, including outside a framework entirely
@@ -56,7 +56,7 @@ context; in the browser, any environment with `ResizeObserver` and
 import { createVisualLinker } from '@macrulez/visual-linker-core'
 
 const container = document.querySelector('#diagram')
-const linker = createVisualLinker(container, { defaultCurve: 'smoothstep' })
+const linker = createVisualLinker(container, { lines: { curve: 'smoothstep' } })
 
 linker.setBlocks([
   { id: 'a', el: document.querySelector('#block-a') },
@@ -67,6 +67,72 @@ linker.setConnections([{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' }
 linker.on('connection:click', ({ connection }) => console.log(connection.id))
 
 // later: linker.destroy()
+```
+
+### Configuration
+
+One structured object configures everything, grouped by what it styles:
+
+```ts
+const linker = createVisualLinker(el, {
+  theme: darkTheme, // colors in one place — see Themes below
+  lines: {
+    curve: 'smoothstep',
+    color: '#6fcf97',
+    width: 2,
+    dashed: false,
+    highlight: { width: 2.5 },
+    hover: { width: 3 },
+    selected: { color: '#8ab4ff' },
+    focus: { width: 4 },
+    opacity: 1,
+    bezier: { curvature: 0.5, minReach: 24, maxReach: 160, angleBlend: 0.55, angleMaxOffset: 30 },
+    smoothstep: { cornerRadius: 8, maxTrunkReach: 48 },
+    routing: { avoidObstacles: true, padding: 12 },
+    jumps: { radius: 6 },
+    animated: { shape: 'dots', speed: 50 },
+  },
+  markers: { end: { shape: 'arrow', hover: { size: 10 } }, sizes: { arrow: 8 } },
+  ports: { show: true, radius: 4, fill: '#fff', stroke: '#2e8b57', hover: { radius: 6 }, spread: { gap: 16 } },
+  labels: { background: '#fff', color: '#1c1e2b', fontSize: 11, hover: { background: '#eef' } },
+  blocks: { draggable: true, drag: { grid: 20, bounds: 'container' } },
+  interaction: { selectable: true, clipToScrollParents: 'pin' },
+})
+```
+
+`ConnectionDescriptor.style` has the same shape as `lines` (plus
+`markers: { start, end }`), so anything that can be set for every line can be
+set for one — in the same words. Resolution, from the strongest: the field on
+the connection (or port, block, label) → the group in the configuration →
+the theme token → a CSS variable of your own → the built-in value. The
+state buckets merge field by field at every level.
+
+#### Changing the configuration at runtime
+
+```ts
+linker.setConfig({ lines: { color: '#e0526c' } }) // deep-merges; `undefined` unsets a key
+linker.replaceConfig(nextConfig) // replaces everything
+linker.getConfig() // a copy of what is in effect
+```
+
+Everything re-renders, and the listeners behind `blocks`/`interaction`
+(dragging, selection) are re-attached or removed to match.
+
+#### Themes
+
+A theme is a set of color tokens — `line`, `lineHover`, `lineSelected`,
+`selectedHalo`, `focusRing`, `portFill`, `portStroke`, `labelBackground`,
+`labelBorder`, `labelText` — written to CSS variables (`--vl-line-color`, …)
+on the diagram, so plain CSS can still override them. `lightTheme` and
+`darkTheme` are included, `defineTheme(overrides, base = lightTheme)` makes
+your own, and switching is one call:
+
+```ts
+import { createVisualLinker, darkTheme, defineTheme } from '@macrulez/visual-linker-core'
+
+const midnight = defineTheme({ line: '#8b9bff', lineHover: '#c4ccff', portFill: '#1b1d2b' }, darkTheme)
+createVisualLinker(el, { theme: midnight })
+linker.setConfig({ theme: lightTheme })
 ```
 
 ### More examples
@@ -125,34 +191,34 @@ linker.setBlocks([
   { id: 'hub', el: hubEl, portSpread: { gap: 24, padding: 8 } }, // whole block
   { id: 'list', el: listEl, ports: [{ id: 'out', spread: true }] }, // one port only
 ])
-createVisualLinker(el, { defaultPortSpread: true }) // every block; `spread: false` opts a port back out
+createVisualLinker(el, { ports: { spread: true } }) // every block; `spread: false` opts a port back out
 ```
 
-Priority: port `spread` > block `portSpread` > `defaultPortSpread`; `false` at
+Priority: port `spread` > block `portSpread` > `ports.spread`; `false` at
 any level switches an inherited setting off. Defaults: `gap: 16`, `padding: 8`.
 
 #### Hops at crossings
 
 ```ts
-createVisualLinker(el, { jumps: true }) // or { jumps: { radius: 8 } }
+createVisualLinker(el, { lines: { jumps: true } }) // or { lines: { jumps: { radius: 8 } } }
 { curve: 'smoothstep', jumps: false } // opt a single line out
 ```
 
 Where a `smoothstep` line crosses another connection's line, its horizontal
 stretch makes a small semicircular hop over the vertical one — as on electrical
 schematics. Lines running along each other (a shared trunk), T-junctions and
-crossings too close to a bend are left alone. Combine with `avoidObstacles` for
+crossings too close to a bend are left alone. Combine with `routing.avoidObstacles` for
 tidy diagrams.
 
 #### Routing around blocks
 
 ```ts
-createVisualLinker(el, { avoidObstacles: true, obstaclePadding: 12 })
-{ curve: 'smoothstep', avoidObstacles: false } // opt a single connection out
+createVisualLinker(el, { lines: { routing: { avoidObstacles: true, padding: 12 } } })
+{ curve: 'smoothstep', routing: { avoidObstacles: false } } // opt a single connection out
 ```
 
 By default `smoothstep` lines run straight through any block that happens to
-be in between. With `avoidObstacles` they are routed around the other blocks
+be in between. With `routing.avoidObstacles` they are routed around the other blocks
 (A* over the blocks' padded edges, fewest turns first), re-routing live as
 blocks are dragged. A line whose plain route is already clear is left exactly
 as it was; blocks that are an endpoint of the line (or contain / sit inside
@@ -186,7 +252,7 @@ and `.vl-label-bg` / `.vl-label-text`). Every label's resolved position is in
 ```ts
 { id: 'a-b', from, to, style: { animated: true } }
 { id: 'a-c', from, to, style: { animated: { shape: 'dots', speed: 50, direction: 'forward' } } }
-createVisualLinker(el, { defaultAnimated: true }) // every line; `animated: false` opts one out
+createVisualLinker(el, { lines: { animated: true } }) // every line; `animated: false` opts one out
 ```
 
 A pattern travels along the line from `from` to `to` (or back with
@@ -194,24 +260,24 @@ A pattern travels along the line from `from` to `to` (or back with
 By default the pattern takes the line's own color and the line underneath is
 dimmed, so it reads on any background; give `color` to draw it in that color
 over the unchanged line instead. It is a separate overlay, so it composes with
-`dashed`, `hoverStyle` and markers; pure CSS (no per-frame JS) and switched off
+`dashed`, the hover state and markers; pure CSS (no per-frame JS) and switched off
 for `prefers-reduced-motion`.
 
 #### Selecting connections, keyboard and screen readers
 
 ```ts
-const linker = createVisualLinker(el, { selectable: true })
+const linker = createVisualLinker(el, { interaction: { selectable: true } })
 linker.on('connection:selectionchange', ({ selectedIds }) => {})
 linker.on('connection:delete-request', ({ connections }) => {}) // you remove them — or don't
 linker.setSelectedConnections(['a-b']) // controlled use; emits nothing
 ```
 
-With `selectable`, every connection is a focusable button (Tab order = the
+With `interaction.selectable`, every connection is a focusable button (Tab order = the
 order of `connections`). Click or Enter/Space selects it (Ctrl/Cmd/Shift
 toggles within a multi-selection); Escape or a click elsewhere clears the
 selection; Delete/Backspace asks to delete the selection — the library never
-removes data. Style a selected line with `style.selectedStyle` (same fields
-as `hoverStyle`, hover wins while both apply); the default is a width bump
+removes data. Style a selected line with `style.selected` (same fields
+as `hover`, hover wins while both apply); the default is a width bump
 plus a halo (`--vl-selected-color`, focus ring: `--vl-focus-color`). Lines
 always carry `role="img"` and an `aria-label` — `ariaLabel` on the
 connection, or "Connection: {from} → {to}".
@@ -221,7 +287,7 @@ connection, or "Connection: {from} → {to}".
 A port inside an `overflow: auto/scroll/hidden/clip` element (a row in a
 scrolling list, say) that has scrolled out of the visible area no longer
 leaves a line dangling over unrelated content. By default
-(`clipToScrollParents: 'pin'`) that end is pulled to the edge of the visible
+(`interaction.clipToScrollParents: 'pin'`) that end is pulled to the edge of the visible
 area — the line "continues off-screen" — and its marker and port dot are
 dropped; `'hide'` hides the whole connection; `false` ignores clipping. The
 `layout` event flags such ends as `fromClipped`/`toClipped`.
@@ -244,7 +310,7 @@ the bend radius, and `maxTrunkReach` caps how far a shared trunk extends
 before splitting — relevant only when 2+ connections share the same
 `(block, port, side)`.
 
-#### Markers and hover styling
+#### Markers and states
 
 ```ts
 linker.setConnections([
@@ -254,27 +320,33 @@ linker.setConnections([
     to: { blockId: 'b' },
     style: {
       color: '#6366f1',
-      endMarker: { shape: 'arrow', size: 8 },
-      hoverStyle: { color: '#312e81', width: 3 },
+      hover: { color: '#312e81', width: 3 },
+      markers: {
+        end: { shape: 'arrow', size: 8, hover: { size: 11, color: '#312e81' } },
+      },
     },
   },
 ])
 ```
 
-`startMarker`/`endMarker` accept a bare shape name, a full `MarkerConfig`
+`markers.start` / `markers.end` accept a bare shape name, a full marker config
 (`shape`/`size`/`color`/`strokeColor`/`strokeWidth`/`className`/`svg`/`orient`/`arrow`),
-or `false` to suppress even the built-in port dot. `hoverStyle` overrides
-`color`/`width`/`dashed`/`markerSize` while the connection is hovered or
-its incident block is — falling back to the base style for any field left
-unset.
+or `false` to suppress even the built-in port dot. Every visual entity has the
+same four state buckets — `highlight`, `hover`, `selected`, `focus` — with the fields of the
+entity itself, so a marker can change its shape, size, colors or whole `svg` while
+its connection is hovered or selected. `hover` is the pointer over the line
+itself; `highlight` is a line lit because the pointer is on one of its blocks
+(it behaves like `hover` until a `highlight` bucket is set). States stack as base →
+`selected` → `highlight` → `hover` → `focus`, falling back to the base for any field left unset; a marker
+follows the line's color of the current state unless it sets its own.
 
 A shape marker can carry a direction arrow too — the shape stays on the
 endpoint, and the arrow's tip stops exactly on the shape's outer edge
 (outline included), instead of the two overlapping:
 
 ```ts
-endMarker: { shape: 'circle', color: '#fff', strokeColor: '#6366f1', strokeWidth: 2, arrow: true }
-endMarker: { shape: 'square', arrow: { color: '#e0526c', gap: 1 } } // own color, 1 unit of air before the edge
+markers: { end: { shape: 'circle', color: '#fff', strokeColor: '#6366f1', strokeWidth: 2, arrow: true } }
+markers: { end: { shape: 'square', arrow: { color: '#e0526c', gap: 1 } } } // own color, 1 unit of air before the edge
 ```
 
 The arrow follows the line's direction, so a marker with `arrow` always
@@ -285,9 +357,10 @@ measured — set `arrow.gap` to the distance from the endpoint instead.
 
 ```ts
 const linker = createVisualLinker(diagramEl, {
-  draggable: true, // every block draggable by default
-  dragGridSize: 20, // snap to a 20px grid while dragging
-  dragBounds: 'container',
+  blocks: {
+    draggable: true, // every block draggable by default
+    drag: { grid: 20, bounds: 'container' }, // snap to a 20px grid, stay inside the container
+  },
 })
 
 linker.setBlocks([{ id: 'a', el: cardEl, dragHandle: '.card-header' }])
@@ -296,7 +369,7 @@ linker.on('block:drag', ({ blockId, x, y }) => console.log(blockId, x, y))
 ```
 
 Connected lines re-route in real time as a block moves — no manual
-`refresh()` call needed. `dragBounds` also accepts a specific
+`refresh()` call needed. `drag.bounds` also accepts a specific
 `HTMLElement` (a drop-zone elsewhere in the layout) or an inset object
 (`{ top, right, bottom, left }`, shrinking the container's own box).
 
@@ -310,7 +383,7 @@ linker.on('layout', ({ connections, ports }) => {
 ```
 
 `block:dragstart`/`drag`/`dragend`, `block:mouseenter`/`mouseleave`,
-`connection:click`/`mouseenter`/`mouseleave`, and `layout` — every `on()`
+`connection:click`/`mouseenter`/`mouseleave`/`selectionchange`/`delete-request`, and `layout` — every `on()`
 call returns its own unsubscribe function.
 
 ---

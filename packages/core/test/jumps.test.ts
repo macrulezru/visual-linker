@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { findJumps, resolveJumpRadius, type JumpPath } from '../src/jumps'
 import { roundedPolylinePath } from '../src/orthogonal'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker, type VisualLinker } from '../src/visual-linker'
 import { VLConnectionCurveEnum } from '../src/enums'
 import type { Point } from '../src/geometry'
@@ -130,7 +131,7 @@ describe('jumps in the engine', () => {
       container.appendChild(el)
       return { id, el }
     }
-    engine = createVisualLinker(container, { showPorts: false, ...options })
+    engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
     engine.setBlocks([make('a', 0, 130), make('b', 400, 130), make('c', 200, 0), make('d', 200, 260)])
     const smooth = { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0 }
     engine.setConnections([
@@ -149,15 +150,15 @@ describe('jumps in the engine', () => {
   })
 
   it('hops the horizontal line over the vertical one when enabled — and only that line', () => {
-    const d = setup({ jumps: true })
+    const d = setup({ lines: { jumps: true } })
     expect(d.ab).toContain('A 5 5 0 0 1 255 150') // a 5px hop centered on x=250, the middle of c and d
     expect(d.cd).not.toContain('A')
   })
 
   it('takes a custom radius, and a connection can opt out', () => {
-    expect(setup({ jumps: { radius: 8 } }).ab).toContain('A 8 8 0 0 1 258 150')
+    expect(setup({ lines: { jumps: { radius: 8 } } }).ab).toContain('A 8 8 0 0 1 258 150')
     engine!.destroy()
-    expect(setup({ jumps: true }, [{ jumps: false }, {}]).ab).not.toContain('A')
+    expect(setup({ lines: { jumps: true } }, [{ jumps: false }, {}]).ab).not.toContain('A')
     engine!.destroy()
     expect(setup({}, [{ jumps: true }, {}]).ab).toContain('A 5 5')
   })

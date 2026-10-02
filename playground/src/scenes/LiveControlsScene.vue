@@ -6,12 +6,12 @@ import {
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
   type MarkerConfig,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-vue'
 
 // Draggable, confined to the canvas — 'container' resolves to this
 // <VisualLinker>'s own root element.
-const linkerOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
+const linkerConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
 
 const targets = ['b1', 'b2', 'b3']
 
@@ -74,6 +74,8 @@ const labelEnabled = ref(true)
 const labelText = ref('payload')
 
 const connections = computed<ConnectionDescriptor[]>(() => {
+  const hoverMarker = hoverEnabled.value ? { hover: { size: hoverMarkerSize.value } } : {}
+  const withHover = (marker: MarkerConfig | false | undefined) => (marker ? { ...marker, ...hoverMarker } : marker)
   const style: ConnectionDescriptor['style'] = {
     curve: curve.value,
     color: lineColor.value,
@@ -81,22 +83,30 @@ const connections = computed<ConnectionDescriptor[]>(() => {
     dashed: dashed.value,
     ...(curve.value === VLConnectionCurveEnum.BEZIER
       ? {
-          curvature: curvature.value,
-          curveMinReach: curveMinReach.value,
-          curveMaxReach: curveMaxReach.value,
-          curveAngleBlend: curveAngleBlend.value,
-          curveAngleMaxOffset: curveAngleMaxOffset.value,
+          bezier: {
+            curvature: curvature.value,
+            minReach: curveMinReach.value,
+            maxReach: curveMaxReach.value,
+            angleBlend: curveAngleBlend.value,
+            angleMaxOffset: curveAngleMaxOffset.value,
+          },
         }
       : {}),
-    ...(curve.value === VLConnectionCurveEnum.SMOOTHSTEP ? { cornerRadius: cornerRadius.value } : {}),
-    startMarker: markerConfig(
-      startShape.value,
-      startColor.value,
-      startSize.value,
-      startStrokeColor.value,
-      startStrokeWidth.value,
-    ),
-    endMarker: markerConfig(endShape.value, endColor.value, endSize.value, endStrokeColor.value, endStrokeWidth.value),
+    ...(curve.value === VLConnectionCurveEnum.SMOOTHSTEP ? { smoothstep: { cornerRadius: cornerRadius.value } } : {}),
+    markers: {
+      start: withHover(
+        markerConfig(
+          startShape.value,
+          startColor.value,
+          startSize.value,
+          startStrokeColor.value,
+          startStrokeWidth.value,
+        ),
+      ),
+      end: withHover(
+        markerConfig(endShape.value, endColor.value, endSize.value, endStrokeColor.value, endStrokeWidth.value),
+      ),
+    },
     animated: animatedEnabled.value
       ? {
           shape: flowShape.value,
@@ -105,12 +115,11 @@ const connections = computed<ConnectionDescriptor[]>(() => {
           color: flowCustomColor.value ? flowColor.value : undefined,
         }
       : undefined,
-    hoverStyle: hoverEnabled.value
+    hover: hoverEnabled.value
       ? {
           color: hoverColor.value,
           width: hoverWidth.value,
           dashed: hoverDashed.value,
-          markerSize: hoverMarkerSize.value,
         }
       : undefined,
   }
@@ -160,7 +169,7 @@ const shapeOptions: { value: ShapeChoice; label: string }[] = [
 
     <div class="layout">
       <div ref="canvasRef" class="canvas">
-        <VisualLinker :connections="connections" :options="linkerOptions">
+        <VisualLinker :connections="connections" :config="linkerConfig">
           <div v-vl-block="'top'" class="card card--top node pos-top">Top</div>
           <div v-vl-block="'b1'" class="card node pos-b1">B1</div>
           <div v-vl-block="'b2'" class="card node pos-b2">B2</div>

@@ -7,6 +7,7 @@ import InteractivityScene from './scenes/InteractivityScene.vue'
 import MarkersScene from './scenes/MarkersScene.vue'
 import LiveControlsScene from './scenes/LiveControlsScene.vue'
 import FreePlacementScene from './scenes/FreePlacementScene.vue'
+import ThemesScene from './scenes/ThemesScene.vue'
 
 const tabs = [
   { id: 'overview', label: 'Overview', component: OverviewScene },
@@ -15,6 +16,7 @@ const tabs = [
   { id: 'ports', label: 'Ports & anchoring', component: PortsScene },
   { id: 'interactivity', label: 'Drag & interactivity', component: InteractivityScene },
   { id: 'markers', label: 'Markers & overlays', component: MarkersScene },
+  { id: 'themes', label: 'Themes & states', component: ThemesScene },
   { id: 'live', label: 'Live controls', component: LiveControlsScene },
 ] as const
 

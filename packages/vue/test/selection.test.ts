@@ -7,6 +7,7 @@ const { createVisualLinker, engineMock, handlers } = vi.hoisted(() => {
   const engineMock = {
     setBlocks: vi.fn(),
     setConnections: vi.fn(),
+    replaceConfig: vi.fn(),
     setSelectedConnections: vi.fn(),
     on: vi.fn((event: string, handler: (payload: unknown) => void) => {
       handlers[event] = handler
@@ -16,7 +17,10 @@ const { createVisualLinker, engineMock, handlers } = vi.hoisted(() => {
   }
   return { createVisualLinker: vi.fn(() => engineMock), engineMock, handlers }
 })
-vi.mock('@macrulez/visual-linker-core', () => ({ createVisualLinker }))
+vi.mock('@macrulez/visual-linker-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@macrulez/visual-linker-core')>()),
+  createVisualLinker,
+}))
 
 const { VisualLinker } = await import('../src/VisualLinker')
 

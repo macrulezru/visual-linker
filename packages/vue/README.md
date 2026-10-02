@@ -26,7 +26,7 @@ option tuning).
 - **Ref/getter-friendly everywhere** — a block's `el`, `dragHandle`, `dragBounds`, and a port's `target`/`anchorEl` all accept a Vue template ref directly
 - **Three overlay slots** — `#connection-label`, `#port`, `#marker` — HTML content positioned exactly where the engine's own SVG drawing puts each connection/port
 - **`useVisualLinker()`** — the low-level composable, wired straight to a container element you render yourself
-- **`setVisualLinkerDefaults()`** — package-wide fallback for most `VisualLinkerOptions` fields — what [`@macrulez/visual-linker-nuxt`](https://www.npmjs.com/package/@macrulez/visual-linker-nuxt)'s module options configure under the hood
+- **A reactive `config`** — one structured configuration (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`) that follows your state: change the prop, a ref or the app-wide shared config (`VisualLinkerPlugin`'s `config`, `useVisualLinkerConfig()`) and every diagram re-renders live. Nothing is global: the shared config is a `provide` of the app (or a subtree)
 - **The full `@macrulez/visual-linker-core` surface, re-exported** — `createVisualLinker`, every enum and every type, no separate core install needed
 - **SSR-safe by design** — the engine and its drawing layer only exist client-side after mount; the directives emit their `data-vl-*` attributes during SSR too
 
@@ -37,7 +37,7 @@ option tuning).
 - **Connector lines on top of a layout you already have** — cards inside panels inside grid columns: mark the cards with `v-vl-block`, keep your components and CSS as they are.
 - **Rows or handles inside a block as connection points** — `v-vl-port` on the row; it attaches to the nearest block around it.
 - **Elements in completely different parts of the page** — a sidebar list and a main area rendered by different components: `scope="page"` connects them without restructuring anything.
-- **Blocks the user can drag around** — `draggable`/`dragHandle`/`dragBounds`, and every connected line follows in real time.
+- **Blocks the user can drag around** — `config.blocks.draggable`, `dragHandle`/`dragBounds`, and every connected line follows in real time.
 - **A label or custom marker that must sit exactly on a connection** — `#connection-label`/`#marker` slots use the same per-render geometry as the SVG lines.
 
 ---
@@ -152,15 +152,15 @@ In page scope the lines are drawn in a `position: fixed` layer covering the view
 
 #### `<VisualLinker>` props
 
-| Prop          | Type                     |                                                                                                                                                    |
-| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connections` | `ConnectionDescriptor[]` | required                                                                                                                                           |
-| `blocks`      | `VisualLinkerBlock[]`    | optional — `id`, `el?` (ref/getter/element/selector), `ports`, `draggable`, `dragHandle`, `dragBounds`                                             |
-| `options`     | `VisualLinkerOptions`    | passed to `createVisualLinker()` once, on mount — see [`@macrulez/visual-linker-core`](https://www.npmjs.com/package/@macrulez/visual-linker-core) |
-| `scope`       | `'container' \| 'page'`  | default `'container'`                                                                                                                              |
-| `name`        | `string`                 | lets elements elsewhere claim this instance via `data-vl-linker` / the directives' `linker`                                                        |
-| `selected`    | `string[]`               | ids of selected connections (`v-model:selected`), needs `options.selectable`                                                                       |
-| `zIndex`      | `number \| string`       | stacking order of the drawing layer                                                                                                                |
+| Prop          | Type                     |                                                                                                                                                                           |
+| ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | `ConnectionDescriptor[]` | required                                                                                                                                                                  |
+| `blocks`      | `VisualLinkerBlock[]`    | optional — `id`, `el?` (ref/getter/element/selector), `ports`, `draggable`, `dragHandle`, `dragBounds`                                                                    |
+| `config`      | `VisualLinkerConfig`     | the diagram's configuration, reactive — merged over the shared defaults; see [`@macrulez/visual-linker-core`](https://www.npmjs.com/package/@macrulez/visual-linker-core) |
+| `scope`       | `'container' \| 'page'`  | default `'container'`                                                                                                                                                     |
+| `name`        | `string`                 | lets elements elsewhere claim this instance via `data-vl-linker` / the directives' `linker`                                                                               |
+| `selected`    | `string[]`               | ids of selected connections (`v-model:selected`), needs `config.interaction.selectable`                                                                                   |
+| `zIndex`      | `number \| string`       | stacking order of the drawing layer                                                                                                                                       |
 
 Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 `block-drag`, `block-dragend`, `block-mouseenter`, `block-mouseleave`,
@@ -172,7 +172,7 @@ Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 <VisualLinker
   v-model:selected="selected"
   :connections="connections"
-  :options="{ selectable: true }"
+  :config="{ interaction: { selectable: true } }"
   @connection-delete-request="(requested) => remove(requested)"
 >
   …
@@ -183,7 +183,7 @@ Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 the selection. `@connection-selectionchange` receives the same array,
 `@connection-delete-request` the connections to delete (Delete/Backspace on a
 focused line) — you decide whether to remove them. See the core README for the
-full keyboard/ARIA behaviour and `style.selectedStyle`.
+full keyboard/ARIA behaviour and `style.selected`.
 
 #### Overlay slots
 
@@ -207,8 +207,8 @@ while labels with `text` are drawn by the engine; without `labels` it is called
 once, at the line's midpoint, as before.
 
 Each slot is only built if actually used. `#marker` only renders for an
-endpoint without an explicit `startMarker`/`endMarker` in its `style` —
-an explicit style still wins.
+endpoint with no marker configured (neither `config.markers` nor the connection's
+`style.markers`), and not for an end pinned to a scroller's edge — an explicit marker still wins.
 
 #### `useVisualLinker(container, options?)`
 
@@ -226,8 +226,9 @@ const blocks = computed(() => [
   { id: 'b', el: blockBEl },
 ])
 const connections = ref([{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' } }])
+const config = ref({ lines: { curve: 'smoothstep' } }) // a ref, a getter or a plain object; changes apply live
 
-const { engine } = useVisualLinker(containerEl, { blocks, connections })
+const { engine } = useVisualLinker(containerEl, { blocks, connections, config })
 </script>
 
 <template>
@@ -243,19 +244,35 @@ const { engine } = useVisualLinker(containerEl, { blocks, connections })
 `engine.value.setBlocks(...)`/`setConnections(...)` instead of the
 reactive sync.
 
-#### `setVisualLinkerDefaults` / `visualLinkerDefaults`
+#### Reactive configuration and the shared config
+
+`config` is watched: replace the prop, mutate a reactive object, or change a
+ref given to `useVisualLinker()`, and the diagram re-renders with the new
+values — switching a theme or toggling `lines.jumps` needs no remount.
+
+A configuration shared by every diagram of the app is a plain Vue `provide`:
 
 ```ts
-import { setVisualLinkerDefaults } from '@macrulez/visual-linker-vue'
+import { createApp } from 'vue'
+import { VisualLinkerPlugin, darkTheme } from '@macrulez/visual-linker-vue'
 
-setVisualLinkerDefaults({ defaultCurve: 'smoothstep', showPorts: false })
+createApp(App).use(VisualLinkerPlugin, { config: { theme: darkTheme, lines: { curve: 'smoothstep' } } })
 ```
 
-Read by both `<VisualLinker>` and `useVisualLinker()` as the base layer
-under an explicit `options` prop/argument. Covers most — but not all —
-of `VisualLinkerOptions`: `defaultCornerRadius`, `defaultMaxTrunkReach`,
-`draggable`, and `dragBounds` aren't part of this shared-defaults
-mechanism and must be passed directly at each call site.
+```ts
+import { useVisualLinkerConfig, lightTheme } from '@macrulez/visual-linker-vue'
+
+const shared = useVisualLinkerConfig() // a reactive VisualLinkerConfig
+shared.theme = lightTheme // every diagram under the plugin re-themes
+```
+
+Every diagram merges the shared config under its own `config`, field by
+field, with its own `config` winning — so one change re-styles all of them at
+once. The state belongs to the app (nothing is global, several apps on a page
+don't interfere), and `provideVisualLinkerConfig(initial?)` does the same for
+a subtree: components below it use that config instead of the app-level one.
+`useVisualLinkerConfig()` throws a clear error if nothing provides one. This is
+what the Nuxt module's options feed.
 
 ---
 

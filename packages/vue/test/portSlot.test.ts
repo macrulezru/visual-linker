@@ -8,6 +8,7 @@ const { createVisualLinker, emitLayout } = vi.hoisted(() => {
   const engineMock = {
     setBlocks: vi.fn(),
     setConnections: vi.fn(),
+    replaceConfig: vi.fn(),
     on: vi.fn((event: string, handler: typeof layoutHandler) => {
       if (event === 'layout') layoutHandler = handler
       return () => {}
@@ -19,7 +20,10 @@ const { createVisualLinker, emitLayout } = vi.hoisted(() => {
     emitLayout: (p: { connections: ConnectionLayout[]; ports: PortLayout[] }) => layoutHandler?.(p),
   }
 })
-vi.mock('@macrulez/visual-linker-core', () => ({ createVisualLinker }))
+vi.mock('@macrulez/visual-linker-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@macrulez/visual-linker-core')>()),
+  createVisualLinker,
+}))
 
 const { VisualLinker } = await import('../src/VisualLinker')
 

@@ -53,7 +53,7 @@ export interface VisualLinkerBlock {
   dragHandle?: RefFriendlyElement
   /** Overrides the `options.dragBounds` default for this block. */
   dragBounds?: RefFriendlyDragBounds
-  /** Overrides `options.defaultPortSpread` for this block. */
+  /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
 }
 
@@ -64,7 +64,7 @@ export interface BlockDirectiveOptions {
   draggable?: boolean
   dragHandle?: RefFriendlyElement
   dragBounds?: RefFriendlyDragBounds
-  /** Overrides `options.defaultPortSpread` for this block. */
+  /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
 }
 /** `v-vl-block="'id'"` or `v-vl-block="{ id, ...options }"`. */
