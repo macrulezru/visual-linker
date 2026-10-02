@@ -4,20 +4,20 @@ import {
   VLConnectionCurveEnum,
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-vue'
 
 // Every mini-demo below is draggable, confined to its own small canvas —
 // 'container' resolves to the <VisualLinker>'s own root element, i.e. exactly
 // the `.canvas` card each one renders into.
-const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
+const dragConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
 
 const bezierDefault: ConnectionDescriptor[] = [
   {
     id: 'c',
     from: { blockId: 'a' },
     to: { blockId: 'b' },
-    style: { curve: VLConnectionCurveEnum.BEZIER, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.BEZIER, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 const bezierWide: ConnectionDescriptor[] = [
@@ -27,9 +27,8 @@ const bezierWide: ConnectionDescriptor[] = [
     to: { blockId: 'b' },
     style: {
       curve: VLConnectionCurveEnum.BEZIER,
-      curvature: 0.75,
-      curveMaxReach: 260,
-      endMarker: VLMarkerShapeEnum.ARROW,
+      bezier: { curvature: 0.75, maxReach: 260 },
+      markers: { end: VLMarkerShapeEnum.ARROW },
     },
   },
 ]
@@ -38,7 +37,7 @@ const straightConnections: ConnectionDescriptor[] = [
     id: 'c',
     from: { blockId: 'a' },
     to: { blockId: 'b' },
-    style: { curve: VLConnectionCurveEnum.STRAIGHT, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.STRAIGHT, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 const smoothstepSolo: ConnectionDescriptor[] = [
@@ -46,7 +45,7 @@ const smoothstepSolo: ConnectionDescriptor[] = [
     id: 'c',
     from: { blockId: 'a' },
     to: { blockId: 'b' },
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 
@@ -57,7 +56,11 @@ const obstacleConnections = (avoidObstacles: boolean): ConnectionDescriptor[] =>
     id: 'c',
     from: { blockId: 'src' },
     to: { blockId: 'dst' },
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, avoidObstacles },
+    style: {
+      curve: VLConnectionCurveEnum.SMOOTHSTEP,
+      markers: { end: VLMarkerShapeEnum.ARROW },
+      routing: { avoidObstacles },
+    },
   },
 ]
 
@@ -67,14 +70,19 @@ const crossingConnections = (jumps: boolean): ConnectionDescriptor[] => [
     id: 'h',
     from: { blockId: 'a' },
     to: { blockId: 'b' },
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, jumps },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, markers: { end: VLMarkerShapeEnum.ARROW }, jumps },
   },
   {
     id: 'v',
     from: { blockId: 'c' },
     to: { blockId: 'd' },
     // Both lines opt in: whichever one ends up horizontal after you drag the blocks is the one that hops.
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW, color: '#6d5bf6', jumps },
+    style: {
+      curve: VLConnectionCurveEnum.SMOOTHSTEP,
+      markers: { end: VLMarkerShapeEnum.ARROW },
+      color: '#6d5bf6',
+      jumps,
+    },
   },
 ]
 
@@ -83,13 +91,13 @@ const fanoutConnections: ConnectionDescriptor[] = [
     id: 'c1',
     from: { blockId: 'src', portId: 'out' },
     to: { blockId: 't1' },
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
   {
     id: 'c2',
     from: { blockId: 'src', portId: 'out' },
     to: { blockId: 't2' },
-    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 </script>
@@ -107,7 +115,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>bezier <span class="muted">(default)</span></h3>
         <p class="caption"><code>curvature: 0.5</code>, <code>curveMaxReach: 160</code></p>
         <div class="canvas">
-          <VisualLinker :connections="bezierDefault" :options="dragOptions">
+          <VisualLinker :connections="bezierDefault" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -118,7 +126,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>bezier <span class="muted">(wider bow)</span></h3>
         <p class="caption"><code>curvature: 0.75</code>, <code>curveMaxReach: 260</code></p>
         <div class="canvas">
-          <VisualLinker :connections="bezierWide" :options="dragOptions">
+          <VisualLinker :connections="bezierWide" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -129,7 +137,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>straight</h3>
         <p class="caption">no control points at all</p>
         <div class="canvas">
-          <VisualLinker :connections="straightConnections" :options="dragOptions">
+          <VisualLinker :connections="straightConnections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -140,7 +148,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
         <h3>smoothstep <span class="muted">(solo)</span></h3>
         <p class="caption">orthogonal routing, rounded 90° bends (<code>cornerRadius</code>)</p>
         <div class="canvas">
-          <VisualLinker :connections="smoothstepSolo" :options="dragOptions">
+          <VisualLinker :connections="smoothstepSolo" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -156,7 +164,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
           caps how far it can stretch)
         </p>
         <div class="canvas canvas--fanout">
-          <VisualLinker :connections="fanoutConnections" :options="dragOptions">
+          <VisualLinker :connections="fanoutConnections" :config="dragConfig">
             <div v-vl-block="'src'" v-vl-port="'out'" class="card node left-mid">Src</div>
             <div v-vl-block="'t1'" class="card node tr">T1</div>
             <div v-vl-block="'t2'" class="card node br">T2</div>
@@ -176,7 +184,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
           }}
         </p>
         <div class="canvas canvas--tall">
-          <VisualLinker :connections="obstacleConnections(avoid)" :options="dragOptions">
+          <VisualLinker :connections="obstacleConnections(avoid)" :config="dragConfig">
             <div v-vl-block="'src'" class="card node o-src">Src</div>
             <div v-vl-block="'blocker'" class="card node o-blocker">In the way</div>
             <div v-vl-block="'dst'" class="card node o-dst">Dst</div>
@@ -196,7 +204,7 @@ const fanoutConnections: ConnectionDescriptor[] = [
           }}
         </p>
         <div class="canvas canvas--tall">
-          <VisualLinker :connections="crossingConnections(jumps)" :options="dragOptions">
+          <VisualLinker :connections="crossingConnections(jumps)" :config="dragConfig">
             <div v-vl-block="'a'" class="card node x-a">A</div>
             <div v-vl-block="'b'" class="card node x-b">B</div>
             <div v-vl-block="'c'" class="card node x-c">C</div>

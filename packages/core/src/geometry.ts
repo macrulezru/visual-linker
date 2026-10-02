@@ -34,7 +34,7 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * Every knob affecting a bezier connection's shape — all overridable per
- * connection (`ConnectionStyle`) or instance-wide (`VisualLinkerOptions`),
+ * connection (`ConnectionStyle`) or instance-wide (`VisualLinkerConfig`),
  * since what reads as "too straight" or "too curvy" depends entirely on a
  * given diagram's block spacing and density; one hardcoded feel can't fit
  * every layout.

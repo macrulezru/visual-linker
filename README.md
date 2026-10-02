@@ -11,11 +11,11 @@ measures it and draws the lines.
 
 ## Packages
 
-| Package                                         | Description                                                                                                                                 |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@macrulez/visual-linker-core`](packages/core) | Framework-agnostic engine — `createVisualLinker(container, options)`, no Vue involved.                                                      |
-| [`@macrulez/visual-linker-vue`](packages/vue)   | `<VisualLinker>` component, `v-vl-block`/`v-vl-port` directives and `useVisualLinker()` composable — plus every core export, re-exported.   |
-| [`@macrulez/visual-linker-nuxt`](packages/nuxt) | Nuxt module wrapping the Vue package — auto-imports `<VisualLinker>`/`useVisualLinker`, seeds shared option defaults from `nuxt.config.ts`. |
+| Package                                         | Description                                                                                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@macrulez/visual-linker-core`](packages/core) | Framework-agnostic engine — `createVisualLinker(container, config)`, no Vue involved.                                                         |
+| [`@macrulez/visual-linker-vue`](packages/vue)   | `<VisualLinker>` component, `v-vl-block`/`v-vl-port` directives and `useVisualLinker()` composable — plus every core export, re-exported.     |
+| [`@macrulez/visual-linker-nuxt`](packages/nuxt) | Nuxt module wrapping the Vue package — auto-imports `<VisualLinker>`/`useVisualLinker`, seeds the shared configuration from `nuxt.config.ts`. |
 
 ---
 
@@ -25,7 +25,7 @@ measures it and draws the lines.
 - **Three curve types** — `bezier` (configurable curvature, min/max reach, angle lean), `smoothstep` (orthogonal routing with rounded corners and group-aware branch points for connections sharing a port), and `straight`
 - **Block drag & drop** — pointer-driven, with an optional drag handle, a px grid snap, and bounds confined to the container, an element, or an inset box; every connected line re-routes in real time as a block moves
 - **A typed event API** — drag/hover/click events, plus a per-render `layout` event carrying every connection's and port's resolved geometry, for building your own overlay content
-- **Per-connection styling** — color, width, dashed, start/end markers (four built-in shapes or custom SVG), and a distinct hover style, all overridable per connection on top of instance-wide defaults
+- **Per-connection styling** — color, width, dashed, start/end markers (four built-in shapes or custom SVG), and a distinct look for the hover, selected and focus states — all one structured configuration (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`), overridable per connection and changeable at runtime, with ready-made light/dark themes
 - **Resize & scroll reactivity out of the box** — every connection recomputes itself when a block resizes, the window resizes, or the container scrolls — no manual event wiring
 - **A component, a composable, and a Nuxt module over one core** — `<VisualLinker>` around your own markup (blocks marked with `v-vl-block`/`data-vl-block` at any depth, or anywhere on the page with `scope="page"`), the low-level `useVisualLinker()` escape hatch, and a Nuxt module with auto-imports and config-level option defaults; both Vue packages **re-export the full core surface**, so installing just `@macrulez/visual-linker-vue` reaches the framework-agnostic layer too
 - **Zero peer dependencies in core** — `@macrulez/visual-linker-core` runs anywhere, including outside a framework entirely
@@ -106,7 +106,7 @@ const connections = [{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' } }
 export default defineNuxtConfig({
   modules: ['@macrulez/visual-linker-nuxt'],
   visualLinker: {
-    defaultCurve: 'smoothstep',
+    lines: { curve: 'smoothstep' },
   },
 })
 ```

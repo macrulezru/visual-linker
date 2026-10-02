@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker, type VisualLinker } from '../src/visual-linker'
 
 function block(id: string, left: number, top: number): HTMLElement {
@@ -9,17 +10,17 @@ function block(id: string, left: number, top: number): HTMLElement {
   return el
 }
 
-function setup(options: Parameters<typeof createVisualLinker>[1] = { selectable: true }) {
+function setup(options: Parameters<typeof createVisualLinker>[1] = { interaction: { selectable: true } }) {
   const container = document.createElement('div')
   document.body.appendChild(container)
-  const engine = createVisualLinker(container, { showPorts: false, ...options })
+  const engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
   engine.setBlocks([
     { id: 'a', el: block('a', 0, 0) },
     { id: 'b', el: block('b', 300, 0) },
     { id: 'c', el: block('c', 300, 200) },
   ])
   engine.setConnections([
-    { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { width: 2, selectedStyle: { color: 'red' } } },
+    { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { width: 2, selected: { color: 'red' } } },
     { id: 'ac', from: { blockId: 'a' }, to: { blockId: 'c' }, ariaLabel: 'A to C' },
   ])
   const paths = Object.fromEntries(
@@ -160,7 +161,7 @@ describe('selectable connections', () => {
     document.body.appendChild(container)
     const a = block('a', 0, 0)
     const b = block('b', 300, 0)
-    engine = createVisualLinker(container, { showPorts: false, selectable: true })
+    engine = createVisualLinker(container, { ports: { show: false }, interaction: { selectable: true } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -170,7 +171,7 @@ describe('selectable connections', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { selectedStyle: { color: 'red' }, hoverStyle: { color: 'blue' } },
+        style: { selected: { color: 'red' }, hover: { color: 'blue' } },
       },
     ])
     const path = container.querySelector('path.vl-connection') as SVGPathElement

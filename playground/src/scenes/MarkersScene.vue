@@ -3,31 +3,31 @@ import {
   VisualLinker,
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-vue'
 
 // Every mini-demo below is draggable, confined to its own small canvas.
-const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
-const portSlotOptions: VisualLinkerOptions = { ...dragOptions, showPorts: false }
+const dragConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
+const portSlotConfig: VisualLinkerConfig = { ...dragConfig, ports: { show: false } }
 
 function single(style: ConnectionDescriptor['style']): ConnectionDescriptor[] {
   return [{ id: 'c', from: { blockId: 'a' }, to: { blockId: 'b' }, style }]
 }
 
 const shapeDemos = [
-  { title: 'circle', connections: single({ endMarker: VLMarkerShapeEnum.CIRCLE }) },
+  { title: 'circle', connections: single({ markers: { end: VLMarkerShapeEnum.CIRCLE } }) },
   {
     title: 'square + outline',
     connections: single({
-      endMarker: { shape: VLMarkerShapeEnum.SQUARE, size: 10, strokeColor: '#fff', strokeWidth: 1.5 },
+      markers: { end: { shape: VLMarkerShapeEnum.SQUARE, size: 10, strokeColor: '#fff', strokeWidth: 1.5 } },
     }),
   },
-  { title: 'diamond', connections: single({ endMarker: VLMarkerShapeEnum.DIAMOND }) },
-  { title: 'arrow', connections: single({ endMarker: VLMarkerShapeEnum.ARROW }) },
+  { title: 'diamond', connections: single({ markers: { end: VLMarkerShapeEnum.DIAMOND } }) },
+  { title: 'arrow', connections: single({ markers: { end: VLMarkerShapeEnum.ARROW } }) },
   {
     title: 'custom svg',
     connections: single({
-      endMarker: { svg: '<path d="M4,4 L16,10 L4,16 L8,10 Z" fill="#6d5bf6" />' },
+      markers: { end: { svg: '<path d="M4,4 L16,10 L4,16 L8,10 Z" fill="#6d5bf6" />' } },
     }),
   },
 ]
@@ -35,13 +35,13 @@ const shapeDemos = [
 const hoverConnections: ConnectionDescriptor[] = single({
   color: '#1c1e2b',
   width: 2,
-  endMarker: { shape: VLMarkerShapeEnum.ARROW, size: 6 },
-  hoverStyle: { color: '#6d5bf6', width: 4, dashed: true, markerSize: 9 },
+  markers: { end: { shape: VLMarkerShapeEnum.ARROW, size: 6, hover: { size: 9 } } },
+  hover: { color: '#6d5bf6', width: 4, dashed: true },
 })
 
-const bareEndConnections: ConnectionDescriptor[] = single({ endMarker: false })
+const bareEndConnections: ConnectionDescriptor[] = single({ markers: { end: false } })
 
-const labelConnections: ConnectionDescriptor[] = single({ endMarker: VLMarkerShapeEnum.ARROW })
+const labelConnections: ConnectionDescriptor[] = single({ markers: { end: VLMarkerShapeEnum.ARROW } })
 
 const portSlotConnections: ConnectionDescriptor[] = single({})
 
@@ -52,7 +52,7 @@ const multiLabelConnections: ConnectionDescriptor[] = [
     id: 'c',
     from: { blockId: 'a' },
     to: { blockId: 'b' },
-    style: { endMarker: VLMarkerShapeEnum.ARROW },
+    style: { markers: { end: VLMarkerShapeEnum.ARROW } },
     labels: [
       { id: 'from', position: 'start', text: 'POST' },
       { id: 'rate', position: 0.5, text: 'follows the line', rotate: true, offset: -14 },
@@ -73,7 +73,7 @@ const multiLabelConnections: ConnectionDescriptor[] = [
       <div v-for="demo in shapeDemos" :key="demo.title" class="demo">
         <h3>{{ demo.title }}</h3>
         <div class="canvas">
-          <VisualLinker :connections="demo.connections" :options="dragOptions">
+          <VisualLinker :connections="demo.connections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -81,10 +81,10 @@ const multiLabelConnections: ConnectionDescriptor[] = [
       </div>
 
       <div class="demo">
-        <h3>hoverStyle</h3>
+        <h3>hover states</h3>
         <p class="caption">hover the line — color, width, dashed and marker size all change together</p>
         <div class="canvas">
-          <VisualLinker :connections="hoverConnections" :options="dragOptions">
+          <VisualLinker :connections="hoverConnections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>
@@ -93,9 +93,9 @@ const multiLabelConnections: ConnectionDescriptor[] = [
 
       <div class="demo">
         <h3>#marker slot</h3>
-        <p class="caption"><code>endMarker: false</code> leaves a bare point for this custom shape to fill</p>
+        <p class="caption"><code>markers: { end: false</code> leaves a bare point for this custom shape to fill</p>
         <div class="canvas">
-          <VisualLinker :connections="bareEndConnections" :options="dragOptions">
+          <VisualLinker :connections="bareEndConnections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
             <template #marker="{ position }">
@@ -107,9 +107,9 @@ const multiLabelConnections: ConnectionDescriptor[] = [
 
       <div class="demo">
         <h3>#port slot</h3>
-        <p class="caption">full replacement for the built-in dot (here: <code>showPorts: false</code>)</p>
+        <p class="caption">full replacement for the built-in dot (here: <code>ports.show: false</code>)</p>
         <div class="canvas">
-          <VisualLinker :connections="portSlotConnections" :options="portSlotOptions">
+          <VisualLinker :connections="portSlotConnections" :config="portSlotConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
             <template #port>
@@ -123,7 +123,7 @@ const multiLabelConnections: ConnectionDescriptor[] = [
         <h3>#connection-label slot</h3>
         <p class="caption">arbitrary HTML positioned at the curve's real (curve-aware) midpoint</p>
         <div class="canvas">
-          <VisualLinker :connections="labelConnections" :options="dragOptions">
+          <VisualLinker :connections="labelConnections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
             <template #connection-label>
@@ -141,7 +141,7 @@ const multiLabelConnections: ConnectionDescriptor[] = [
           <code>#connection-label</code> slot is called once per label.
         </p>
         <div class="canvas">
-          <VisualLinker :connections="multiLabelConnections" :options="dragOptions">
+          <VisualLinker :connections="multiLabelConnections" :config="dragConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
             <template #connection-label>
@@ -254,3 +254,4 @@ const multiLabelConnections: ConnectionDescriptor[] = [
   box-shadow: var(--shadow-sm);
 }
 </style>
+}

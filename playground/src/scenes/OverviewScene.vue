@@ -28,10 +28,16 @@ const connections: ConnectionDescriptor[] = [
     style: {
       curve: VLConnectionCurveEnum.BEZIER,
       // strokeColor/strokeWidth: an outline on top of the fill, same knobs
-      // VisualLinkerOptions.defaultPortXxx uses for the built-in port dot.
-      startMarker: { shape: VLMarkerShapeEnum.SQUARE, strokeColor: '#fff', strokeWidth: 1.5 },
-      endMarker: { shape: VLMarkerShapeEnum.DIAMOND, strokeColor: '#fff', strokeWidth: 1.5 },
-      hoverStyle: { markerSize: 13 },
+      // VisualLinkerConfig.ports uses for the built-in port dot.
+      markers: {
+        start: { shape: VLMarkerShapeEnum.SQUARE, strokeColor: '#fff', strokeWidth: 1.5 },
+        end: {
+          shape: VLMarkerShapeEnum.DIAMOND,
+          strokeColor: '#fff',
+          strokeWidth: 1.5,
+          hover: { size: 13 },
+        },
+      },
     },
   },
   {
@@ -57,7 +63,7 @@ const connections: ConnectionDescriptor[] = [
       curve: VLConnectionCurveEnum.BEZIER,
       color: '#e0526c',
       dashed: true,
-      endMarker: { shape: VLMarkerShapeEnum.ARROW, color: '#e0526c' },
+      markers: { end: { shape: VLMarkerShapeEnum.ARROW, color: '#e0526c' } },
     },
   },
   {
@@ -66,11 +72,11 @@ const connections: ConnectionDescriptor[] = [
     to: { blockId: 'b17' },
     style: {
       curve: VLConnectionCurveEnum.BEZIER,
-      endMarker: { shape: VLMarkerShapeEnum.ARROW, size: 6 },
-      // markerSize grows the arrow specifically on hover, on top of the
+      // The marker's own hover size grows the arrow specifically, on top of the
       // automatic strokeWidth-linked growth every marker already gets for
       // free from the line itself getting thicker while active.
-      hoverStyle: { color: '#1f6feb', markerSize: 12 },
+      markers: { end: { shape: VLMarkerShapeEnum.ARROW, size: 6, hover: { size: 12 } } },
+      hover: { color: '#1f6feb' },
     },
   },
   {
@@ -78,30 +84,34 @@ const connections: ConnectionDescriptor[] = [
     from: { blockId: 'b13', portId: 'p14' },
     to: { blockId: 'b18' },
     // Shares p14 with c5 — both peel off the same short trunk stub, rounded at the branch point.
-    style: { curve: VLConnectionCurveEnum.BEZIER, endMarker: VLMarkerShapeEnum.ARROW },
+    style: { curve: VLConnectionCurveEnum.BEZIER, markers: { end: VLMarkerShapeEnum.ARROW } },
   },
   {
     id: 'c7',
     from: { blockId: 'b13', portId: 'p15' },
     to: { blockId: 'b19' },
     // A bigger arrow via the marker's own size coefficient (multiples of the line's stroke width).
-    style: { curve: VLConnectionCurveEnum.BEZIER, endMarker: { shape: VLMarkerShapeEnum.ARROW } },
+    style: { curve: VLConnectionCurveEnum.BEZIER, markers: { end: { shape: VLMarkerShapeEnum.ARROW } } },
   },
   {
     id: 'c8',
     from: { blockId: 'b13', portId: 'p16' },
     to: { blockId: 'b20' },
     // A larger corner radius than the instance default, just on this one connection.
-    style: { curve: VLConnectionCurveEnum.BEZIER, endMarker: VLMarkerShapeEnum.ARROW, cornerRadius: 16 },
+    style: {
+      curve: VLConnectionCurveEnum.BEZIER,
+      markers: { end: VLMarkerShapeEnum.ARROW },
+      smoothstep: { cornerRadius: 16 },
+    },
   },
   {
     id: 'c9',
     from: { blockId: 'b13', portId: 'p16' },
     to: { blockId: 'b21' },
-    // endMarker: false — suppresses the built-in dot at this end too (not
+    // markers.end: false suppresses the built-in dot at this end too (not
     // just "no native marker"), leaving a bare point for #marker below to
     // draw into alone, instead of layering its custom shape over the dot.
-    style: { curve: VLConnectionCurveEnum.BEZIER, endMarker: false },
+    style: { curve: VLConnectionCurveEnum.BEZIER, markers: { end: false } },
   },
 ]
 
@@ -120,16 +130,10 @@ function label(id: string) {
 
     <VisualLinker
       :connections="connections"
-      :options="{
-        dragGridSize: 20,
-        defaultPortRadius: 5,
-        defaultPortColor: '#6d5bf6',
-        defaultPortStrokeColor: '#fff',
-        defaultPortStrokeWidth: 2,
-        // Instance-wide default size for c1's square/diamond markers below —
-        // no need to repeat `size` on every single connection using them.
-        defaultSquareMarkerSize: 10,
-        defaultDiamondMarkerSize: 10,
+      :config="{
+        blocks: { drag: { grid: 20 } },
+        ports: { radius: 5, fill: '#6d5bf6', stroke: '#fff', strokeWidth: 2 },
+        markers: { sizes: { square: 10, diamond: 10 } },
       }"
       @connection-click="lastEvent = `connection-click: ${$event.id}`"
       @connection-mouseenter="lastEvent = `connection-mouseenter: ${$event.id}`"
@@ -175,10 +179,10 @@ function label(id: string) {
            rotate() off the 'layout' event's fromAngle/toAngle) — only used
            for c9's end here, everywhere else keeps its native SVG marker
            (or the built-in dot) since those still have an explicit
-           startMarker/endMarker style, which always takes precedence over
-           this slot. c9 itself sets `endMarker: false` (not just omits it) —
+           markers.start/markers.end style, which always takes precedence over
+           this slot. c9 itself sets `markers: { end: false` (not just omits it) —
            that's what stops the built-in dot from also drawing under this
-           custom shape; leaving endMarker unset entirely would still show
+           custom shape; leaving markers.end unset entirely would still show
            the default dot layered beneath it. -->
       <template #marker="{ connection, position }">
         <span v-if="connection.id === 'c9' && position === 'end'" class="custom-marker" />
@@ -295,3 +299,4 @@ function label(id: string) {
   border-radius: 4px;
 }
 </style>
+}

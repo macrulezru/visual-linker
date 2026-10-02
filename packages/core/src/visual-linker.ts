@@ -25,7 +25,8 @@ import { findJumps, resolveJumpRadius, type JumpPath } from './jumps'
 import { layoutLabel } from './path-sampling'
 import { createRouteCache, inflate, pathIsClear, type ObstacleRect } from './routing'
 import { resolveSpread, spreadPositions, type ResolvedSpread } from './spread'
-import { createSvgLayer, type SvgLabelInput, type SvgPathInput } from './svg-layer'
+import { createSvgLayer, type SvgLabelInput, type SvgPathInput, type SvgPortInput } from './svg-layer'
+import { mergeConfig, mergeMarkerInputs, patchConfig, resolveLines } from './config'
 import {
   DEFAULT_CORNER_RADIUS,
   DEFAULT_CURVE_TYPE,
@@ -47,8 +48,8 @@ import type {
   FixedSide,
   PortDescriptor,
   PortLayout,
+  VisualLinkerConfig,
   VisualLinkerEventMap,
-  VisualLinkerOptions,
 } from './types'
 
 export interface VisualLinker {
@@ -59,13 +60,16 @@ export interface VisualLinker {
   removeConnection(id: string): void
   /** Sets the selected connections (`selectable` mode) — for controlled use; does not emit `connection:selectionchange`. */
   setSelectedConnections(ids: readonly string[]): void
+  setConfig(patch: VisualLinkerConfig): void
+  replaceConfig(next: VisualLinkerConfig): void
+  getConfig(): VisualLinkerConfig
   /** Forces an immediate path recalculation, bypassing the rAF batching (e.g. right before a screenshot). */
   refresh(): void
   on<E extends keyof VisualLinkerEventMap>(event: E, handler: (payload: VisualLinkerEventMap[E]) => void): () => void
   destroy(): void
 }
 
-const DEFAULT_PORT: PortDescriptor = { id: '__default__', side: VLFixedSideEnum.AUTO, offset: DEFAULT_PORT_OFFSET }
+const DEFAULT_PORT: PortDescriptor = { id: '__default__' }
 
 interface ResolvedEnd {
   point: Point
@@ -182,43 +186,28 @@ function resolveDragBoundsRect(bounds: DragBounds | undefined, container: HTMLEl
   }
 }
 
-export function createVisualLinker(container: HTMLElement, options: VisualLinkerOptions = {}): VisualLinker {
-  const defaultCurve = options.defaultCurve ?? DEFAULT_CURVE_TYPE
-  const showPorts = options.showPorts ?? DEFAULT_SHOW_PORTS
-  const draggableDefault = options.draggable ?? DEFAULT_DRAGGABLE
-  const dragGridSize = options.dragGridSize
-  const dragBoundsDefault = options.dragBounds
-  const portSpreadDefault = options.defaultPortSpread
-  const selectable = options.selectable ?? false
-  const avoidObstaclesDefault = options.avoidObstacles ?? false
-  const obstaclePadding = options.obstaclePadding ?? DEFAULT_OBSTACLE_PADDING
+export function createVisualLinker(container: HTMLElement, initialConfig: VisualLinkerConfig = {}): VisualLinker {
+  let config: VisualLinkerConfig = mergeConfig<VisualLinkerConfig>(initialConfig)
   const routeCache = createRouteCache()
-  const jumpsDefault = options.jumps
-  const clipMode =
-    options.clipToScrollParents === false ? null : options.clipToScrollParents === 'hide' ? 'hide' : 'pin'
-  const cornerRadiusDefault = options.defaultCornerRadius ?? DEFAULT_CORNER_RADIUS
-  const maxTrunkReachDefault = options.defaultMaxTrunkReach ?? DEFAULT_MAX_TRUNK_REACH
-  const curveDefaults: CurveGeometryOptions = {
-    curvature: options.defaultCurvature ?? DEFAULT_CURVE_GEOMETRY.curvature,
-    minReach: options.defaultCurveMinReach ?? DEFAULT_CURVE_GEOMETRY.minReach,
-    maxReach: options.defaultCurveMaxReach ?? DEFAULT_CURVE_GEOMETRY.maxReach,
-    angleBlend: options.defaultCurveAngleBlend ?? DEFAULT_CURVE_GEOMETRY.angleBlend,
-    maxAngleOffsetRad:
-      options.defaultCurveAngleMaxOffset != null
-        ? (options.defaultCurveAngleMaxOffset * Math.PI) / 180
-        : DEFAULT_CURVE_GEOMETRY.maxAngleOffsetRad,
+
+  const selectable = () => config.interaction?.selectable ?? false
+  const showPorts = () => config.ports?.show ?? DEFAULT_SHOW_PORTS
+  const clipMode = (): 'pin' | 'hide' | null => {
+    const value = config.interaction?.clipToScrollParents
+    return value === false ? null : value === 'hide' ? 'hide' : 'pin'
   }
 
-  function resolveCurveGeometry(style: ConnectionStyle | undefined): CurveGeometryOptions {
+  function resolveCurveGeometry(view: ConnectionStyle): CurveGeometryOptions {
+    const bezier = view.bezier
     return {
-      curvature: style?.curvature ?? curveDefaults.curvature,
-      minReach: style?.curveMinReach ?? curveDefaults.minReach,
-      maxReach: style?.curveMaxReach ?? curveDefaults.maxReach,
-      angleBlend: style?.curveAngleBlend ?? curveDefaults.angleBlend,
+      curvature: bezier?.curvature ?? DEFAULT_CURVE_GEOMETRY.curvature,
+      minReach: bezier?.minReach ?? DEFAULT_CURVE_GEOMETRY.minReach,
+      maxReach: bezier?.maxReach ?? DEFAULT_CURVE_GEOMETRY.maxReach,
+      angleBlend: bezier?.angleBlend ?? DEFAULT_CURVE_GEOMETRY.angleBlend,
       maxAngleOffsetRad:
-        style?.curveAngleMaxOffset != null
-          ? (style.curveAngleMaxOffset * Math.PI) / 180
-          : curveDefaults.maxAngleOffsetRad,
+        bezier?.angleMaxOffset != null
+          ? (bezier.angleMaxOffset * Math.PI) / 180
+          : DEFAULT_CURVE_GEOMETRY.maxAngleOffsetRad,
     }
   }
 
@@ -274,19 +263,19 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     container,
     {
       onConnectionEnter(id) {
-        svg.setActiveConnections([id])
+        svg.setHoveredConnections([id])
         const connection = connections.get(id)
         if (connection) emit('connection:mouseenter', { connection })
       },
       onConnectionLeave(id) {
-        svg.setActiveConnections([])
+        svg.setHoveredConnections([])
         const connection = connections.get(id)
         if (connection) emit('connection:mouseleave', { connection })
       },
       onConnectionClick(id, event) {
         const connection = connections.get(id)
         if (!connection) return
-        if (selectable) selectFromInput(id, isAdditive(event))
+        if (selectable()) selectFromInput(id, isAdditive(event))
         emit('connection:click', { connection })
       },
       onConnectionKeydown(id, event) {
@@ -305,19 +294,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         }
       },
     },
-    {
-      radius: options.defaultPortRadius,
-      color: options.defaultPortColor,
-      strokeColor: options.defaultPortStrokeColor,
-      strokeWidth: options.defaultPortStrokeWidth,
-    },
-    {
-      circle: options.defaultCircleMarkerSize,
-      square: options.defaultSquareMarkerSize,
-      diamond: options.defaultDiamondMarkerSize,
-      arrow: options.defaultArrowMarkerSize,
-    },
-    { selectable, defaultAnimated: options.defaultAnimated },
+    () => config,
   )
 
   // A click anywhere outside the connection layer, or Escape, clears the selection.
@@ -329,10 +306,20 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
   function onDocumentKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && selectedIds.size > 0) applySelection(new Set(), true)
   }
-  if (selectable) {
-    document.addEventListener('pointerdown', onDocumentPointerDown, true)
-    document.addEventListener('keydown', onDocumentKeydown)
+  let selectionListenersOn = false
+  function syncSelectionListeners() {
+    const wanted = selectable()
+    if (wanted === selectionListenersOn) return
+    selectionListenersOn = wanted
+    if (wanted) {
+      document.addEventListener('pointerdown', onDocumentPointerDown, true)
+      document.addEventListener('keydown', onDocumentKeydown)
+    } else {
+      document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+      document.removeEventListener('keydown', onDocumentKeydown)
+    }
   }
+  syncSelectionListeners()
 
   const watcher = createResizeWatcher(render)
   watcher.observe(container)
@@ -355,11 +342,11 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     const cleanups: (() => void)[] = []
 
     const onMouseEnter = () => {
-      svg.setActiveConnections(incidentConnectionIds(block.id))
+      svg.setHighlightedConnections(incidentConnectionIds(block.id))
       emit('block:mouseenter', { blockId: block.id })
     }
     const onMouseLeave = () => {
-      svg.setActiveConnections([])
+      svg.setHighlightedConnections([])
       emit('block:mouseleave', { blockId: block.id })
     }
     block.el.addEventListener('pointerenter', onMouseEnter)
@@ -369,10 +356,10 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       block.el.removeEventListener('pointerleave', onMouseLeave)
     })
 
-    const draggable = block.draggable ?? draggableDefault
+    const draggable = block.draggable ?? config.blocks?.draggable ?? DEFAULT_DRAGGABLE
     if (draggable) {
       const handle = resolveWithin(block.el, block.dragHandle)
-      const bounds = block.dragBounds ?? dragBoundsDefault
+      const bounds = block.dragBounds ?? config.blocks?.drag?.bounds
       handle.classList.add('vl-draggable')
       handle.style.touchAction = 'none'
 
@@ -397,6 +384,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         const onPointerMove = (moveEvent: PointerEvent) => {
           let absX = basePosition.x + startOffset.x + (moveEvent.clientX - startX)
           let absY = basePosition.y + startOffset.y + (moveEvent.clientY - startY)
+          const dragGridSize = config.blocks?.drag?.grid
           if (dragGridSize) {
             absX = snapToGrid(absX, dragGridSize)
             absY = snapToGrid(absY, dragGridSize)
@@ -453,21 +441,23 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     const rect = anchorEl ? anchorEl.getBoundingClientRect() : targetRect
     const anchorCenter = toLocal({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, containerRect)
 
-    const side = Array.isArray(port.side)
-      ? resolveAutoSide(anchorCenter, towards, port.side)
-      : port.side && port.side !== VLFixedSideEnum.AUTO
-        ? port.side
+    const sideSetting = port.side ?? config.ports?.side
+    const side = Array.isArray(sideSetting)
+      ? resolveAutoSide(anchorCenter, towards, sideSetting)
+      : sideSetting && sideSetting !== VLFixedSideEnum.AUTO
+        ? sideSetting
         : resolveAutoSide(anchorCenter, towards)
     const raw = anchorEl
       ? projectedSidePoint(rect, side, targetRect)
-      : sidePoint(rect, side, port.offset ?? DEFAULT_PORT_OFFSET)
+      : sidePoint(rect, side, port.offset ?? config.ports?.offset ?? DEFAULT_PORT_OFFSET)
     const range: [number, number] = isHorizontalSide(side)
       ? [rect.left - containerRect.left, rect.right - containerRect.left]
       : [rect.top - containerRect.top, rect.bottom - containerRect.top]
 
     let point = toLocal(raw, containerRect)
     let clipped = false
-    if (clipMode) {
+    const clip = clipMode()
+    if (clip) {
       // The port's own element is what a scroller hides — a row inside a
       // scrolling block — so its ancestors decide, not the block's.
       const visible = visibleRect(clippingChainOf(portElement(block, port)))
@@ -480,7 +470,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         }
         const result = clampToRect(point, local)
         if (result.clipped) {
-          if (clipMode === 'hide') return null
+          if (clip === 'hide') return null
           point = result.point
           clipped = true
         }
@@ -490,7 +480,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       point,
       clipped,
       side,
-      spread: resolveSpread(port.spread, block.portSpread, portSpreadDefault),
+      spread: resolveSpread(port.spread, block.portSpread, config.ports?.spread),
       range,
     }
   }
@@ -526,6 +516,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       connection: ConnectionDescriptor
       from: ResolvedEnd
       to: ResolvedEnd
+      view: ConnectionStyle
       curve: ConnectionStyle['curve']
     }[] = []
     for (const connection of connections.values()) {
@@ -540,7 +531,8 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       const to = resolveEndpoint(connection.to, fromCenter, containerRect)
       if (!from || !to) continue
 
-      resolved.push({ connection, from, to, curve: connection.style?.curve ?? defaultCurve })
+      const view = resolveLines(config.lines, connection.style)
+      resolved.push({ connection, from, to, view, curve: view.curve ?? DEFAULT_CURVE_TYPE })
     }
 
     // Pass 1b: spread ports — runs before branching, which then treats each
@@ -558,7 +550,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         point: item.from.point,
         side: item.from.side,
         otherPoint: item.to.point,
-        maxReach: item.connection.style?.maxTrunkReach ?? maxTrunkReachDefault,
+        maxReach: item.view.smoothstep?.maxTrunkReach ?? DEFAULT_MAX_TRUNK_REACH,
       })),
     )
     const toBranches = computeBranchInfo(
@@ -569,14 +561,14 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         point: item.to.point,
         side: item.to.side,
         otherPoint: item.from.point,
-        maxReach: item.connection.style?.maxTrunkReach ?? maxTrunkReachDefault,
+        maxReach: item.view.smoothstep?.maxTrunkReach ?? DEFAULT_MAX_TRUNK_REACH,
       })),
     )
 
     // Pass 3: build the actual paths/port markers now that every branch point is known.
     const paths: SvgPathInput[] = []
     const portLayouts: PortLayout[] = []
-    const seenPortKeys = new Set<string>()
+    const portConnections = new Map<string, string[]>()
     const connectionLayouts: ConnectionLayout[] = []
     const labelInputs: SvgLabelInput[] = []
 
@@ -626,11 +618,12 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     // Every smoothstep polyline up front (obstacle-routed where asked) — the
     // line-jump pass below needs all of them before any single path is built.
     const smoothPointsById = new Map<string, Point[]>()
-    for (const { connection, from, to, curve } of resolved) {
+    for (const { connection, from, to, view, curve } of resolved) {
       if (curve !== VLConnectionCurveEnum.SMOOTHSTEP) continue
       const fromBranch = fromBranches.get(connection.id)
       const toBranch = toBranches.get(connection.id)
-      const avoid = connection.style?.avoidObstacles ?? avoidObstaclesDefault
+      const avoid = view.routing?.avoidObstacles ?? false
+      const obstaclePadding = view.routing?.padding ?? DEFAULT_OBSTACLE_PADDING
       const obstacles = avoid ? obstaclesFor(connection, from, to) : []
       const padded = obstacles.map((rect) => inflate(rect, obstaclePadding))
       smoothPointsById.set(
@@ -656,7 +649,9 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
 
     // Line jumps: where a hopping line's horizontal stretch crosses another
     // connection's vertical one. Needs every polyline, hence the pre-pass.
-    const cornerRadiusOf = (connection: ConnectionDescriptor) => connection.style?.cornerRadius ?? cornerRadiusDefault
+    const viewById = new Map(resolved.map((item) => [item.connection.id, item.view]))
+    const cornerRadiusOf = (connection: ConnectionDescriptor) =>
+      viewById.get(connection.id)?.smoothstep?.cornerRadius ?? DEFAULT_CORNER_RADIUS
     const jumpPaths: JumpPath[] = resolved.flatMap(({ connection }) => {
       const points = smoothPointsById.get(connection.id)
       if (!points) return []
@@ -664,7 +659,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         {
           id: connection.id,
           points,
-          jumpRadius: resolveJumpRadius(connection.style?.jumps, jumpsDefault),
+          jumpRadius: resolveJumpRadius(viewById.get(connection.id)?.jumps, undefined),
           cornerRadius: cornerRadiusOf(connection),
         },
       ]
@@ -672,7 +667,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     const jumpsByPath = jumpPaths.some((path) => path.jumpRadius !== null) ? findJumps(jumpPaths) : new Map()
     const jumpRadiusById = new Map(jumpPaths.map((path) => [path.id, path.jumpRadius]))
 
-    for (const { connection, from, to, curve } of resolved) {
+    for (const { connection, from, to, view, curve } of resolved) {
       const smoothPoints = smoothPointsById.get(connection.id) ?? null
       const bySegment = jumpsByPath.get(connection.id)
       const d =
@@ -684,7 +679,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
                 cornerRadiusOf(connection),
                 bySegment ? { radius: jumpRadiusById.get(connection.id) ?? 0, bySegment } : undefined,
               )
-            : bezierPath(from.point, from.side, to.point, to.side, resolveCurveGeometry(connection.style))
+            : bezierPath(from.point, from.side, to.point, to.side, resolveCurveGeometry(view))
       paths.push({
         id: connection.id,
         d,
@@ -712,14 +707,23 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         ;({ fromAngle, toAngle } = polylineTangentAngles(points))
         polyline = points
       } else {
-        const geometry = resolveCurveGeometry(connection.style)
+        const geometry = resolveCurveGeometry(view)
         mid = bezierMidpoint(from.point, from.side, to.point, to.side, geometry)
         ;({ fromAngle, toAngle } = bezierTangentAngles(from.point, from.side, to.point, to.side, geometry))
         if (wantsLabels) polyline = bezierPolyline(from.point, from.side, to.point, to.side, geometry)
       }
       const labels = polyline ? (connection.labels ?? []).map((label) => layoutLabel(label, polyline)) : []
       for (const label of labels) {
-        if (label.text) labelInputs.push({ key: `${connection.id}:${label.id}`, ...label, text: label.text })
+        if (label.text) {
+          labelInputs.push({
+            key: `${connection.id}:${label.id}`,
+            connectionId: connection.id,
+            point: label.point,
+            rotation: label.rotation,
+            text: label.text,
+            ...(label.className ? { className: label.className } : {}),
+          })
+        }
       }
       connectionLayouts.push({
         id: connection.id,
@@ -737,8 +741,12 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       // consumer can render custom content even with the built-in dot off.
       // A pinned (clipped) end is not a real port position, so it gets no dot either.
       for (const [endpoint, r, hasExplicitMarker] of [
-        [connection.from, from, connection.style?.startMarker !== undefined],
-        [connection.to, to, connection.style?.endMarker !== undefined],
+        [
+          connection.from,
+          from,
+          mergeMarkerInputs(config.markers?.start, connection.style?.markers?.start) !== undefined,
+        ],
+        [connection.to, to, mergeMarkerInputs(config.markers?.end, connection.style?.markers?.end) !== undefined],
       ] as const) {
         // An explicit start/endMarker replaces the generic dot (and any
         // `#port` slot content) for that endpoint rather than layering under
@@ -753,14 +761,33 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
         // (e.g. one target below, another far to the right), and each distinct
         // point earns its own marker — only truly-coincident points collapse.
         const key = endpointKey(endpoint, r.point)
-        if (seenPortKeys.has(key)) continue
-        seenPortKeys.add(key)
+        const sharing = portConnections.get(key)
+        if (sharing) {
+          sharing.push(connection.id)
+          continue
+        }
+        portConnections.set(key, [connection.id])
         portLayouts.push({ key, blockId: endpoint.blockId, portId: endpoint.portId, point: r.point })
       }
     }
 
-    svg.update(paths, showPorts ? portLayouts : [], labelInputs)
+    const portInputs: SvgPortInput[] = showPorts()
+      ? portLayouts.map((port) => ({
+          key: port.key,
+          point: port.point,
+          connectionIds: portConnections.get(port.key) ?? [],
+        }))
+      : []
+    svg.update(paths, portInputs, labelInputs)
     emit('layout', { connections: connectionLayouts, ports: portLayouts })
+  }
+
+  function applyConfigChange() {
+    syncSelectionListeners()
+    if (!selectable() && selectedIds.size > 0) applySelection(new Set(), true)
+    setBlockList([...blocks.values()])
+    svg.applyConfig()
+    render()
   }
 
   return {
@@ -792,6 +819,17 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
     setSelectedConnections(ids) {
       applySelection(new Set(ids), false)
     },
+    setConfig(patch) {
+      config = patchConfig(config, patch)
+      applyConfigChange()
+    },
+    replaceConfig(next) {
+      config = mergeConfig<VisualLinkerConfig>(next)
+      applyConfigChange()
+    },
+    getConfig() {
+      return mergeConfig<VisualLinkerConfig>(config)
+    },
     refresh: render,
     on(event, handler) {
       if (!listeners.has(event)) listeners.set(event, new Set())
@@ -804,6 +842,7 @@ export function createVisualLinker(container: HTMLElement, options: VisualLinker
       window.removeEventListener('resize', onViewportChange)
       document.removeEventListener('pointerdown', onDocumentPointerDown, true)
       document.removeEventListener('keydown', onDocumentKeydown)
+      selectionListenersOn = false
       for (const cleanup of blockCleanups.values()) cleanup()
       blockCleanups.clear()
       watcher.destroy()

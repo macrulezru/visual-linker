@@ -4,7 +4,7 @@ import type { ConnectionCurve } from './types'
 /**
  * Every default value used by the engine, gathered in one place. Each one is
  * independently overridable per-connection or per-instance wherever the
- * public API exposes it (`ConnectionStyle` / `VisualLinkerOptions`) — this
+ * public API exposes it (`ConnectionStyle` / `VisualLinkerConfig`) — this
  * file only holds what applies when nothing else was specified, so tuning
  * the "out of the box" feel never means hunting through geometry/markers/
  * svg-layer/visual-linker for a magic number.
@@ -12,7 +12,7 @@ import type { ConnectionCurve } from './types'
 
 // --- Curve geometry (geometry.ts: bezierPath / exitDirection) ---
 // Mirrored as ConnectionStyle.curvature/curveMinReach/curveMaxReach/
-// curveAngleBlend/curveAngleMaxOffset and VisualLinkerOptions.defaultCurvature/etc.
+// curveAngleBlend/curveAngleMaxOffset and VisualLinkerConfig.lines.bezier
 
 /** Control-point reach as a fraction of the distance between endpoints, before the min/max clamp. */
 export const DEFAULT_CURVATURE = 0.5
@@ -40,7 +40,7 @@ export const DEFAULT_CORNER_RADIUS = 8
  */
 export const DEFAULT_MAX_TRUNK_REACH = 48
 
-// --- Engine-wide behavior (visual-linker.ts: VisualLinkerOptions fallbacks) ---
+// --- Engine-wide behavior (visual-linker.ts: VisualLinkerConfig fallbacks) ---
 
 export const DEFAULT_CURVE_TYPE: ConnectionCurve = VLConnectionCurveEnum.BEZIER
 /** Renders a small circle marker at each resolved port when a connection doesn't request its own start/endMarker. */
@@ -55,7 +55,7 @@ export const DEFAULT_PORT_SPREAD_GAP = 16
 export const DEFAULT_PORT_SPREAD_PADDING = 8
 
 // --- Markers (markers.ts) ---
-// Each has a matching VisualLinkerOptions.defaultXxxMarkerSize field
+// Each has a matching VisualLinkerConfig.markers.sizes field
 // (visual-linker.ts) for an instance-wide override, on top of the existing
 // per-connection MarkerConfig.size.
 
@@ -89,7 +89,7 @@ export const DEFAULT_MARKER_STROKE_WIDTH = 1
 // --- SVG default look (svg-layer.ts: DEFAULT_STYLE CSS custom-property fallbacks) ---
 // Each has a matching `--vl-*` CSS variable a consumer can override from outside
 // without touching these — see TECH_SPEC.md §7. The DEFAULT_PORT_* constants
-// are also each mirrored by a VisualLinkerOptions.defaultPortXxx field
+// are also each mirrored by a VisualLinkerConfig.ports field
 // (visual-linker.ts), for a typed JS-level override instead of plain CSS.
 
 export const DEFAULT_LINE_COLOR = '#2e8b57'
@@ -104,7 +104,7 @@ export const DEFAULT_PORT_FILL = '#fff'
 export const DEFAULT_PORT_STROKE_COLOR = DEFAULT_LINE_COLOR
 export const DEFAULT_PORT_STROKE_WIDTH = 1.5
 export const DEFAULT_PORT_RADIUS = 4
-/** `stroke-dasharray` applied when a connection's `dashed` (or `hoverStyle.dashed`) is true. */
+/** `stroke-dasharray` applied when a connection's `dashed` (or `hover.dashed`) is true. */
 export const DASH_PATTERN = '6 4'
 
 // --- Animated flow along a connection (flow.ts / svg-layer.ts) ---

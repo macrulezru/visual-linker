@@ -5,24 +5,29 @@ import {
   VLFixedSideEnum,
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-vue'
 
 // Every mini-demo below is draggable, confined to its own small canvas.
-const dragOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
+const dragConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
 
 // The target sits directly ABOVE the source in both side demos: full auto
 // would exit through 'top', but the restricted port never considers it.
 const restrictedSides = [VLFixedSideEnum.LEFT, VLFixedSideEnum.RIGHT]
 const autoConnections: ConnectionDescriptor[] = [
-  { id: 'c', from: { blockId: 'source' }, to: { blockId: 'target' }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
+  {
+    id: 'c',
+    from: { blockId: 'source' },
+    to: { blockId: 'target' },
+    style: { markers: { end: VLMarkerShapeEnum.ARROW } },
+  },
 ]
 const restrictedConnections: ConnectionDescriptor[] = [
   {
     id: 'c',
     from: { blockId: 'source', portId: 'out' },
     to: { blockId: 'target' },
-    style: { endMarker: VLMarkerShapeEnum.ARROW },
+    style: { markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 
@@ -31,13 +36,13 @@ const anchorConnections: ConnectionDescriptor[] = [
     id: 'c1',
     from: { blockId: 'group', portId: 'r1' },
     to: { blockId: 't1' },
-    style: { endMarker: VLMarkerShapeEnum.ARROW },
+    style: { markers: { end: VLMarkerShapeEnum.ARROW } },
   },
   {
     id: 'c2',
     from: { blockId: 'group', portId: 'r2' },
     to: { blockId: 't2' },
-    style: { endMarker: VLMarkerShapeEnum.ARROW },
+    style: { markers: { end: VLMarkerShapeEnum.ARROW } },
   },
 ]
 
@@ -47,7 +52,7 @@ function trunkConnections(maxTrunkReach: number): ConnectionDescriptor[] {
     curve: VLConnectionCurveEnum.SMOOTHSTEP,
     cornerRadius: 6,
     maxTrunkReach,
-    endMarker: VLMarkerShapeEnum.ARROW,
+    markers: { end: VLMarkerShapeEnum.ARROW },
   }
   return [
     { id: 'c1', from: { blockId: 'source', portId: 'out' }, to: { blockId: 'top' }, style },
@@ -74,7 +79,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
         <h3>side: 'auto'</h3>
         <p class="caption">picks whichever side faces the target — here, straight up</p>
         <div class="canvas">
-          <VisualLinker :connections="autoConnections" :options="dragOptions">
+          <VisualLinker :connections="autoConnections" :config="dragConfig">
             <div v-vl-block="'target'" class="card node v-top">Target</div>
             <div v-vl-block="'source'" class="card node v-bottom">Src</div>
           </VisualLinker>
@@ -85,7 +90,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
         <h3>side: ['left', 'right']</h3>
         <p class="caption">same layout, but the candidate list rules out top/bottom entirely</p>
         <div class="canvas">
-          <VisualLinker :connections="restrictedConnections" :options="dragOptions">
+          <VisualLinker :connections="restrictedConnections" :config="dragConfig">
             <div v-vl-block="'target'" class="card node v-top">Target</div>
             <div v-vl-block="'source'" v-vl-port="{ id: 'out', side: restrictedSides }" class="card node v-bottom">
               Src
@@ -101,7 +106,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
           indented one
         </p>
         <div class="canvas">
-          <VisualLinker :connections="anchorConnections" :options="dragOptions">
+          <VisualLinker :connections="anchorConnections" :config="dragConfig">
             <div data-vl-block="group" class="card group left-mid">
               <div data-vl-port="r1" data-vl-side="right" data-vl-anchor="group" class="sub">Row 1</div>
               <div data-vl-port="r2" data-vl-side="right" data-vl-anchor="group" class="sub">Row 2</div>
@@ -118,7 +123,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
           three lines into one port — each gets its own virtual port on that side, ordered by source
         </p>
         <div class="canvas">
-          <VisualLinker :connections="spreadConnections" :options="dragOptions">
+          <VisualLinker :connections="spreadConnections" :config="dragConfig">
             <div v-for="(id, i) in spreadSources" :key="id" v-vl-block="id" class="card node" :class="`top-${i}`">
               {{ id.toUpperCase() }}
             </div>
@@ -136,7 +141,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
           <code>padding: 6</code> from the corners
         </p>
         <div class="canvas">
-          <VisualLinker :connections="spreadConnections" :options="dragOptions">
+          <VisualLinker :connections="spreadConnections" :config="dragConfig">
             <div v-for="(id, i) in spreadSources" :key="id" v-vl-block="id" class="card node" :class="`left-${i}`">
               {{ id.toUpperCase() }}
             </div>
@@ -160,7 +165,7 @@ const spreadConnections: ConnectionDescriptor[] = spreadSources.map((id) => ({
           }}
         </p>
         <div class="canvas">
-          <VisualLinker :connections="trunkConnections(reach)" :options="dragOptions">
+          <VisualLinker :connections="trunkConnections(reach)" :config="dragConfig">
             <div v-vl-block="'source'" v-vl-port="'out'" class="card node left-mid">Src</div>
             <div v-vl-block="'top'" class="card node tr">Top</div>
             <div v-vl-block="'bottom'" class="card node br">Bottom</div>

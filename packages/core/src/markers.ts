@@ -14,7 +14,7 @@ import {
   SQUARE_MARKER_INSET,
 } from './params'
 import { VLMarkerShapeEnum, VLOrientEnum } from './enums'
-import type { MarkerConfig, MarkerShape } from './types'
+import type { MarkerShape, MarkerStyle } from './types'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const CENTER = MARKER_VIEWBOX / 2
@@ -25,13 +25,14 @@ export interface ResolvedMarker {
   color: string
   strokeColor?: string
   strokeWidth: number
+  opacity?: number
   className?: string
   svg?: string
   orient: VLOrientEnum.AUTO | VLOrientEnum.FIXED
   arrow?: { color: string; gap: number }
 }
 
-/** Instance-wide default marker size per built-in shape — see `VisualLinkerOptions.defaultXxxMarkerSize`. */
+/** Instance-wide default marker size per built-in shape — see `VisualLinkerConfig.markers.sizes`. */
 export interface MarkerSizeDefaults {
   circle?: number
   square?: number
@@ -61,12 +62,13 @@ function defaultMarkerSize(shape: MarkerShape | undefined, sizeDefaults: MarkerS
 }
 
 export function resolveMarkerConfig(
-  input: MarkerShape | MarkerConfig | false | undefined,
+  input: MarkerShape | MarkerStyle | false | undefined,
   fallbackColor: string,
   sizeDefaults: MarkerSizeDefaults = {},
+  fallbackOpacity?: number,
 ): ResolvedMarker | null {
   if (!input) return null
-  const config: MarkerConfig = typeof input === 'string' ? { shape: input } : input
+  const config: MarkerStyle = typeof input === 'string' ? { shape: input } : input
   const shape = config.svg ? undefined : (config.shape ?? VLMarkerShapeEnum.CIRCLE)
   const arrowConfig = config.arrow === true ? {} : config.arrow || undefined
   const arrow =
@@ -79,6 +81,7 @@ export function resolveMarkerConfig(
     color: config.color ?? fallbackColor,
     strokeColor: config.strokeColor,
     strokeWidth: config.strokeWidth ?? DEFAULT_MARKER_STROKE_WIDTH,
+    opacity: config.opacity ?? fallbackOpacity,
     className: config.className,
     svg: config.svg,
     // The arrow has to follow the line, so a shape carrying one rotates with it too.
@@ -98,6 +101,7 @@ export function markerSignature(position: 'start' | 'end', marker: ResolvedMarke
     marker.color,
     marker.strokeColor ?? '',
     marker.strokeWidth,
+    marker.opacity ?? '',
     marker.className ?? '',
     marker.svg ?? '',
     marker.orient,
@@ -206,7 +210,9 @@ export function createMarkerElement(id: string, position: 'start' | 'end', marke
   const shapeMarkup =
     marker.svg ??
     builtinShapeMarkup(marker.shape ?? VLMarkerShapeEnum.CIRCLE, marker.color, marker.strokeColor, marker.strokeWidth)
-  el.innerHTML =
+  const markup =
     marker.arrow && arrowTipX !== undefined ? arrowMarkup(arrowTipX, marker.arrow.color) + shapeMarkup : shapeMarkup
+  el.innerHTML =
+    marker.opacity !== undefined && marker.opacity < 1 ? `<g opacity="${marker.opacity}">${markup}</g>` : markup
   return el
 }

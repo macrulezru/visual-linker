@@ -14,14 +14,16 @@ import {
 } from 'vue'
 import {
   createVisualLinker,
+  mergeConfig,
+  mergeMarkerInputs,
   type BlockDescriptor,
   type ConnectionDescriptor,
   type ConnectionLayout,
   type PortLayout,
   type VisualLinker as VisualLinkerEngine,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-core'
-import { visualLinkerDefaults } from './config'
+import { injectSharedConfig } from './sharedConfig'
 import { collectBlocks, OBSERVED_ATTRS, registerScope, sameBlocks, VL_ATTR, type VisualLinkerBlock } from './discovery'
 
 export type { VisualLinkerBlock } from './discovery'
@@ -60,8 +62,8 @@ export const VisualLinker = defineComponent({
   props: {
     connections: { type: Array as PropType<ConnectionDescriptor[]>, required: true },
     blocks: { type: Array as PropType<VisualLinkerBlock[]>, default: () => [] },
-    options: { type: Object as PropType<VisualLinkerOptions>, default: () => ({}) },
-    /** Ids of the selected connections (`v-model:selected`) — needs `options.selectable`. Leave unset to let the engine own the selection. */
+    config: { type: Object as PropType<VisualLinkerConfig>, default: () => ({}) },
+    /** Ids of the selected connections (`v-model:selected`) — needs `config.interaction.selectable`. Leave unset to let the engine own the selection. */
     selected: { type: Array as PropType<string[]>, default: undefined },
     scope: { type: String as PropType<VisualLinkerScope>, default: 'container' },
     /** Lets elements elsewhere claim this instance via `data-vl-linker="<name>"` / the directives' `linker` option. */
@@ -97,6 +99,9 @@ export const VisualLinker = defineComponent({
     let observer: MutationObserver | null = null
     let unregisterScope: (() => void) | null = null
 
+    const shared = injectSharedConfig()
+    const effectiveConfig = () => mergeConfig<VisualLinkerConfig>(shared, props.config)
+
     const scheduleScan = () => {
       scanTick.value++
     }
@@ -123,11 +128,9 @@ export const VisualLinker = defineComponent({
       layer,
       (el) => {
         if (!el || engine.value) return
-        // visualLinkerDefaults first, then props.options on top: an option the
-        // caller didn't set (key absent, not just undefined) falls through to
-        // the Nuxt-configured default, and one neither set falls through again
-        // to @macrulez/visual-linker-core's own default — see config.ts.
-        const created = createVisualLinker(el, { ...visualLinkerDefaults, ...props.options })
+        // The shared config from the app first, then props.config on top: a
+        // field neither sets falls through to @macrulez/visual-linker-core's own default.
+        const created = createVisualLinker(el, effectiveConfig())
         created.setConnections(props.connections)
         // After the connections: an id not (yet) in them would be pruned from the selection.
         if (props.selected) created.setSelectedConnections(props.selected)
@@ -172,6 +175,8 @@ export const VisualLinker = defineComponent({
       },
       { flush: 'post' },
     )
+
+    watch(effectiveConfig, (next) => engine.value?.replaceConfig(next))
 
     watch(
       () => props.selected,
@@ -287,10 +292,13 @@ export const VisualLinker = defineComponent({
           // An explicit startMarker/endMarker still wins (renders as the native
           // SVG marker it already was) — the slot only fills in where no
           // per-connection marker style was set, mirroring the built-in dot.
-          for (const [position, point, angle, explicit, clipped] of [
-            ['start', layout.from, layout.fromAngle, connection.style?.startMarker, layout.fromClipped],
-            ['end', layout.to, layout.toAngle, connection.style?.endMarker, layout.toClipped],
+          const markerConfig = effectiveConfig().markers
+          for (const [position, point, angle, clipped] of [
+            ['start', layout.from, layout.fromAngle, layout.fromClipped],
+            ['end', layout.to, layout.toAngle, layout.toClipped],
           ] as const) {
+            const explicit =
+              mergeMarkerInputs(markerConfig?.[position], connection.style?.markers?.[position]) !== undefined
             // A clipped end is pinned to a scroller's edge, not a real endpoint.
             if (explicit || clipped) continue
             children.push(

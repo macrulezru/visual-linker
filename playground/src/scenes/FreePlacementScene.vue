@@ -25,8 +25,7 @@ const pipelineStyle: ConnectionStyle = {
   curve: VLConnectionCurveEnum.SMOOTHSTEP,
   color: '#6d5bf6',
   width: 2,
-  startMarker: portDot,
-  endMarker: { ...portDot, arrow: true },
+  markers: { start: portDot, end: { ...portDot, arrow: true } },
   // Data flowing through the pipeline: dots travelling from source to sink.
   animated: { shape: 'dots', speed: 50 },
 }
@@ -81,7 +80,7 @@ const assignments: ConnectionDescriptor[] = [
   id: `${from}->${to}`,
   from: { blockId: from! },
   to: { blockId: to! },
-  style: { color: '#1fa97a', endMarker: VLMarkerShapeEnum.ARROW, startMarker: VLMarkerShapeEnum.CIRCLE },
+  style: { color: '#1fa97a', markers: { start: VLMarkerShapeEnum.CIRCLE, end: VLMarkerShapeEnum.ARROW } },
 }))
 
 // --- 3. A port scrolled out of its scroller (clipToScrollParents) ---
@@ -90,7 +89,12 @@ const scrollConnections: ConnectionDescriptor[] = Array.from({ length: 8 }, (_, 
   id: `item-${i + 1}`,
   from: { blockId: `item-${i + 1}` },
   to: { blockId: scrollTargets[i % scrollTargets.length]! },
-  style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, color: '#e0526c', width: 2, endMarker: VLMarkerShapeEnum.ARROW },
+  style: {
+    curve: VLConnectionCurveEnum.SMOOTHSTEP,
+    color: '#e0526c',
+    width: 2,
+    markers: { end: VLMarkerShapeEnum.ARROW },
+  },
 }))
 </script>
 
@@ -106,10 +110,13 @@ const scrollConnections: ConnectionDescriptor[] = Array.from({ length: 8 }, (_, 
     <p class="scene-intro">
       Every row below lives three components deep (<code>&lt;DemoPanel&gt;</code> → header/body wrappers → row), with
       invisible <code>in</code>/<code>out</code> port anchors on its edges. The dots and arrows are markers:
-      <code>endMarker: { shape: 'circle', arrow: true }</code> stops the arrow right at the circle's edge. In
-      <em>Prepare</em> the ports use <code>anchorEl</code>: lines meet the panel's own border, at each row's height.
+      <code>markers: { end: { shape: 'circle', arrow: true }</code> stops the arrow right at the circle's edge. In
+      <em>Prepare</em> the ports use <code>anchorEl</code>: lines meet the panel's own border }, at each row's height.
     </p>
-    <VisualLinker :connections="pipeline" :options="{ showPorts: false, defaultCornerRadius: 10 }">
+    <VisualLinker
+      :connections="pipeline"
+      :config="{ ports: { show: false }, lines: { smoothstep: { cornerRadius: 10 } } }"
+    >
       <div class="pipeline">
         <DemoPanel
           v-for="column in columns"
@@ -146,7 +153,7 @@ const scrollConnections: ConnectionDescriptor[] = Array.from({ length: 8 }, (_, 
         </div>
       </DemoPanel>
     </div>
-    <VisualLinker scope="page" name="assign" :connections="assignments" :options="{ showPorts: false }" />
+    <VisualLinker scope="page" name="assign" :connections="assignments" :config="{ ports: { show: false } }" />
 
     <h2 class="section-title">Scrolled out of view — <code>clipToScrollParents</code></h2>
     <p class="scene-intro">
@@ -154,7 +161,7 @@ const scrollConnections: ConnectionDescriptor[] = Array.from({ length: 8 }, (_, 
       end is pulled to the scroller's edge and its dot and arrow are dropped (<code>'pin'</code>, the default;
       <code>'hide'</code> hides the whole line instead).
     </p>
-    <VisualLinker :connections="scrollConnections" :options="{ defaultCornerRadius: 10 }">
+    <VisualLinker :connections="scrollConnections" :config="{ lines: { smoothstep: { cornerRadius: 10 } } }">
       <div class="scroll-demo">
         <div class="scroller">
           <div v-for="n in 8" :key="n" v-vl-block="`item-${n}`" class="chip">Item {{ n }}</div>

@@ -1,10 +1,10 @@
 export { createVisualLinker } from './visual-linker'
 export type { VisualLinker } from './visual-linker'
 
-// Values (not just types) — a consumer writing `side: VLFixedSideEnum.LEFT` or
-// `curve: VLConnectionCurveEnum.SMOOTHSTEP` needs these actually exported, not
-// just their derived string-literal-union types.
 export { VLConnectionCurveEnum, VLMarkerShapeEnum, VLFixedSideEnum, VLOrientEnum } from './enums'
+
+export { lightTheme, darkTheme, defineTheme } from './theme'
+export { mergeConfig, patchConfig, mergeMarkerInputs } from './config'
 
 export type {
   PortSide,
@@ -13,9 +13,30 @@ export type {
   BlockDescriptor,
   ConnectionCurve,
   ConnectionStyle,
+  ConnectionMarkers,
   MarkerShape,
+  MarkerStyle,
   MarkerConfig,
+  MarkerInput,
+  MarkerSizes,
+  MarkersConfig,
   MarkerArrowConfig,
+  LineStyle,
+  LineOptions,
+  LinesConfig,
+  BezierConfig,
+  SmoothstepConfig,
+  RoutingConfig,
+  PortStyle,
+  PortsConfig,
+  LabelStyle,
+  LabelsConfig,
+  BlocksConfig,
+  InteractionConfig,
+  Theme,
+  Stateful,
+  VisualState,
+  VisualLinkerConfig,
   ConnectionFlow,
   JumpsOption,
   ConnectionLabel,
@@ -24,7 +45,6 @@ export type {
   ConnectionDescriptor,
   ConnectionLayout,
   PortLayout,
-  VisualLinkerOptions,
   VisualLinkerEventMap,
   DragBounds,
   PortSpread,

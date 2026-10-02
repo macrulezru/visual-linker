@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRouteCache, inflate, pathIsClear, routeAroundObstacles, simplifyPolyline } from '../src/routing'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker } from '../src/visual-linker'
 import { VLConnectionCurveEnum, VLFixedSideEnum } from '../src/enums'
 import type { Point } from '../src/geometry'
@@ -155,7 +156,7 @@ describe('avoidObstacles in the engine', () => {
       container.appendChild(el)
       return { id, el }
     }
-    const engine = createVisualLinker(container, { showPorts: false, ...options })
+    const engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
     engine.setBlocks([
       make('a', { left: 0, top: 30, right: 100, bottom: 70 }),
       make('b', { left: 300, top: 30, right: 400, bottom: 70 }),
@@ -166,7 +167,7 @@ describe('avoidObstacles in the engine', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0, ...style },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0 }, ...style },
       },
     ])
     const d = container.querySelector('path.vl-connection')!.getAttribute('d')!
@@ -182,17 +183,17 @@ describe('avoidObstacles in the engine', () => {
   })
 
   it('detours around it with avoidObstacles, keeping the padding, and per-connection false opts out', () => {
-    const on = setup({ avoidObstacles: true, obstaclePadding: 10 })
+    const on = setup({ lines: { routing: { avoidObstacles: true, padding: 10 } } })
     expect(pathIsClear(on.points, [inflate(wall, 10)])).toBe(true)
     expect(on.points[0]).toEqual({ x: 100, y: 50 })
     expect(on.points.at(-1)).toEqual({ x: 300, y: 50 })
     on.engine.destroy()
 
-    const off = setup({ avoidObstacles: true }, { avoidObstacles: false })
+    const off = setup({ lines: { routing: { avoidObstacles: true } } }, { routing: { avoidObstacles: false } })
     expect(pathIsClear(off.points, [wall])).toBe(false)
     off.engine.destroy()
 
-    const perConnection = setup({}, { avoidObstacles: true })
+    const perConnection = setup({}, { routing: { avoidObstacles: true } })
     expect(pathIsClear(perConnection.points, [wall])).toBe(true)
     perConnection.engine.destroy()
   })
@@ -200,7 +201,7 @@ describe('avoidObstacles in the engine', () => {
   it('leaves a connection whose plain route is already clear exactly as it was', () => {
     const farAway = { left: 120, top: 400, right: 220, bottom: 500 }
     const without = setup({}, {}, farAway)
-    const withAvoidance = setup({ avoidObstacles: true }, {}, farAway)
+    const withAvoidance = setup({ lines: { routing: { avoidObstacles: true } } }, {}, farAway)
     expect(withAvoidance.d).toBe(without.d)
     without.engine.destroy()
     withAvoidance.engine.destroy()
@@ -208,7 +209,7 @@ describe('avoidObstacles in the engine', () => {
 
   it('shrinks the padding when a block sits closer to an endpoint than the padding allows, still clearing the block itself', () => {
     const tight = { left: 110, top: 0, right: 220, bottom: 100 } // 10px off a's edge: the 16px exit stub ends inside a 10px pad
-    const { engine, points } = setup({ avoidObstacles: true, obstaclePadding: 10 }, {}, tight)
+    const { engine, points } = setup({ lines: { routing: { avoidObstacles: true, padding: 10 } } }, {}, tight)
     expect(pathIsClear(points, [tight])).toBe(true)
     expect(points.at(-1)).toEqual({ x: 300, y: 50 })
     engine.destroy()
@@ -216,7 +217,7 @@ describe('avoidObstacles in the engine', () => {
 
   it('falls back to the plain route when no detour exists (the wall swallows the exit stub)', () => {
     const swallowing = { left: 105, top: -500, right: 500, bottom: 500 } // right in front of a's right side
-    const { engine, d } = setup({ avoidObstacles: true }, {}, swallowing)
+    const { engine, d } = setup({ lines: { routing: { avoidObstacles: true } } }, {}, swallowing)
     const plain = setup({}, {}, swallowing)
     expect(d).toBe(plain.d)
     engine.destroy()

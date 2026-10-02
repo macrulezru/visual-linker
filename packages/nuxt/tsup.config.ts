@@ -4,7 +4,6 @@ export default defineConfig({
   entry: {
     module: 'src/module.ts',
     'runtime/plugin': 'src/runtime/plugin.ts',
-    'runtime/plugin.client': 'src/runtime/plugin.client.ts',
   },
   format: ['esm'],
   dts: true,

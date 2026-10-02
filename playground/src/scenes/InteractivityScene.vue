@@ -7,7 +7,7 @@ import {
   VLMarkerShapeEnum,
   type ConnectionDescriptor,
   type ConnectionStyle,
-  type VisualLinkerOptions,
+  type VisualLinkerConfig,
 } from '@macrulez/visual-linker-vue'
 import EventLog from '../components/EventLog.vue'
 
@@ -32,23 +32,23 @@ const boardKey = computed(() =>
   [snap, avoid, jumps, animated, spread, resets].map((flag) => String(flag.value)).join('-'),
 )
 
-const boardOptions = computed<VisualLinkerOptions>(() => ({
-  draggable: true,
-  dragBounds: 'container',
-  dragGridSize: snap.value ? 24 : undefined,
-  defaultCurve: VLConnectionCurveEnum.SMOOTHSTEP,
-  defaultCornerRadius: 10,
-  avoidObstacles: avoid.value,
-  jumps: jumps.value,
-  defaultAnimated: animated.value ? { speed: 45 } : false,
-  selectable: true,
+const boardConfig = computed<VisualLinkerConfig>(() => ({
+  blocks: { draggable: true, drag: { bounds: 'container', grid: snap.value ? 24 : undefined } },
+  lines: {
+    curve: VLConnectionCurveEnum.SMOOTHSTEP,
+    smoothstep: { cornerRadius: 10 },
+    routing: { avoidObstacles: avoid.value },
+    jumps: jumps.value,
+    animated: animated.value ? { speed: 45 } : false,
+  },
+  interaction: { selectable: true },
 }))
 
 const baseStyle: ConnectionStyle = {
-  endMarker: VLMarkerShapeEnum.ARROW,
-  hoverStyle: { width: 3.5 },
-  // Layered between the base style and hoverStyle; omit it for the default selected look.
-  selectedStyle: { color: '#e0526c', width: 3, markerSize: 8 },
+  markers: { end: { shape: VLMarkerShapeEnum.ARROW, selected: { size: 8 } } },
+  hover: { width: 3.5 },
+  // Layered between the base style and hover; omit it for the default selected look.
+  selected: { color: '#e0526c', width: 3 },
 }
 
 function link(
@@ -110,10 +110,10 @@ const plainBlocks = [
 // 2. Small focused demos of the individual drag options.
 // ---------------------------------------------------------------------------
 
-const miniOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container' }
-const gridOptions: VisualLinkerOptions = { draggable: true, dragBounds: 'container', dragGridSize: 20 }
+const miniConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
+const gridConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container', grid: 20 } } }
 const pair = (a: string, b: string): ConnectionDescriptor[] => [
-  { id: 'c', from: { blockId: a }, to: { blockId: b }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
+  { id: 'c', from: { blockId: a }, to: { blockId: b }, style: { markers: { end: VLMarkerShapeEnum.ARROW } } },
 ]
 const handleConnections = pair('hnd', 'anchor')
 const fenceConnections = pair('free', 'fenced')
@@ -133,7 +133,7 @@ const fenceEl = ref<HTMLElement | null>(null)
     </p>
 
     <div class="toolbar">
-      <label><input v-model="snap" type="checkbox" /> snap to grid <code>dragGridSize: 24</code></label>
+      <label><input v-model="snap" type="checkbox" /> snap to grid <code>blocks.drag.grid: 24</code></label>
       <label><input v-model="avoid" type="checkbox" /> avoid obstacles</label>
       <label><input v-model="jumps" type="checkbox" /> hop over crossings <code>jumps</code></label>
       <label><input v-model="spread" type="checkbox" /> spread shared ports <code>portSpread</code></label>
@@ -156,7 +156,7 @@ const fenceEl = ref<HTMLElement | null>(null)
           :key="boardKey"
           v-model:selected="selected"
           :connections="connections"
-          :options="boardOptions"
+          :config="boardConfig"
           @connection-delete-request="onDeleteRequest"
           @connection-click="lastEvent = `connection-click: ${$event.id}`"
           @connection-selectionchange="lastEvent = `selection: ${$event.join(', ') || '—'}`"
@@ -219,7 +219,7 @@ const fenceEl = ref<HTMLElement | null>(null)
         <h3>dragHandle</h3>
         <p class="caption">only the grip drags — the body is just content</p>
         <div class="canvas canvas--mini">
-          <VisualLinker :connections="handleConnections" :options="miniOptions">
+          <VisualLinker :connections="handleConnections" :config="miniConfig">
             <div v-vl-block="{ id: 'hnd', dragHandle: '.grip-bar' }" class="card node mini-handle">
               <div class="grip-bar">⠿ grip</div>
               <div class="mini-body">body</div>
@@ -234,7 +234,7 @@ const fenceEl = ref<HTMLElement | null>(null)
         <p class="caption">the left block is fenced into the dashed box; the right one into the whole canvas</p>
         <div class="canvas canvas--mini">
           <div ref="fenceEl" class="fence" />
-          <VisualLinker :connections="fenceConnections" :options="miniOptions">
+          <VisualLinker :connections="fenceConnections" :config="miniConfig">
             <div v-vl-block="{ id: 'free', dragBounds: fenceEl }" class="card node mini-a">fenced</div>
             <div v-vl-block="'fenced'" class="card node mini-b">free</div>
           </VisualLinker>
@@ -246,7 +246,7 @@ const fenceEl = ref<HTMLElement | null>(null)
         <p class="caption">kept 30px from every edge, on a 20px grid</p>
         <div class="canvas canvas--mini canvas--grid20">
           <div class="inset-frame" />
-          <VisualLinker :connections="insetConnections" :options="gridOptions">
+          <VisualLinker :connections="insetConnections" :config="gridConfig">
             <div
               v-vl-block="{ id: 'inset', dragBounds: { top: 30, right: 30, bottom: 30, left: 30 } }"
               class="card node mini-a mini-a--inside"

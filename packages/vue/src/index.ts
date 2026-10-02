@@ -3,14 +3,20 @@ export type { VisualLinkerBlock, VisualLinkerScope } from './VisualLinker'
 
 export { vVlBlock, vVlPort } from './directives'
 export { VisualLinkerPlugin } from './plugin'
+export type { VisualLinkerPluginOptions } from './plugin'
 export { VL_ATTR } from './discovery'
 export type { BlockDirectiveOptions, BlockDirectiveValue, PortDirectiveOptions, PortDirectiveValue } from './discovery'
 
 export { useVisualLinker } from './useVisualLinker'
 export type { UseVisualLinkerOptions, UseVisualLinkerReturn } from './useVisualLinker'
 
-export { setVisualLinkerDefaults, visualLinkerDefaults } from './config'
-export type { VisualLinkerDefaults } from './config'
+export {
+  VISUAL_LINKER_CONFIG_KEY,
+  createSharedConfig,
+  installVisualLinkerConfig,
+  provideVisualLinkerConfig,
+  useVisualLinkerConfig,
+} from './sharedConfig'
 
 export type { RefFriendlyBlock, RefFriendlyDragBounds, RefFriendlyElement, RefFriendlyPort } from './refPorts'
 

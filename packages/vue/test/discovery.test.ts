@@ -8,11 +8,15 @@ const { createVisualLinker } = vi.hoisted(() => ({
     container,
     setBlocks: vi.fn(),
     setConnections: vi.fn(),
+    replaceConfig: vi.fn(),
     on: vi.fn(() => () => {}),
     destroy: vi.fn(),
   })),
 }))
-vi.mock('@macrulez/visual-linker-core', () => ({ createVisualLinker }))
+vi.mock('@macrulez/visual-linker-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@macrulez/visual-linker-core')>()),
+  createVisualLinker,
+}))
 
 const { VisualLinker } = await import('../src/VisualLinker')
 const { vVlBlock, vVlPort } = await import('../src/directives')

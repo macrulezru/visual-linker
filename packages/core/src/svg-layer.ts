@@ -1,7 +1,18 @@
-import type { ConnectionFlow, ConnectionStyle } from './types'
+import type { ConnectionStyle, MarkerStyle, VisualLinkerConfig } from './types'
+import {
+  baseOf,
+  layered,
+  mergeMarkerInputs,
+  NO_STATES,
+  resolveLines,
+  statesOf,
+  themeLineColor,
+  type ActiveStates,
+} from './config'
 import { flowStrokeWidth, resolveFlow } from './flow'
 import type { Point } from './geometry'
-import { createMarkerElement, markerSignature, resolveMarkerConfig, type MarkerSizeDefaults } from './markers'
+import { createMarkerElement, markerSignature, resolveMarkerConfig } from './markers'
+import { themeVariables } from './theme'
 import {
   ACTIVE_LINE_WIDTH_BUMP,
   DASH_PATTERN,
@@ -23,34 +34,22 @@ import {
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
-// Module-level (not per-instance) so marker ids stay unique across every
-// `<VisualLinker>`/`createVisualLinker()` instance mounted on the same page —
-// an SVG `id` is global to the whole document, and `url(#id)` resolves to
-// whichever element happens to have that id first in document order. Without
-// this, every instance's own marker counter restarts at 0, so a page with
-// several diagrams ends up with multiple `id="vl-marker-0"` elements, and
-// every connection referencing "its own" vl-marker-0 actually renders
-// whichever instance's marker happened to land first in the DOM.
 let svgLayerInstanceCounter = 0
 
 export interface SvgPathInput {
   id: string
   d: string
   style?: ConnectionStyle
-  /** Physical endpoint identity (block + rounded point) — connections sharing one hide their marker there while another is highlighted. */
   fromKey?: string
   toKey?: string
-  /** An end pulled to a clipping ancestor's edge — its marker is not drawn (the real port is out of view). */
   fromClipped?: boolean
   toClipped?: boolean
-  /** Accessible name of the connection (see `ConnectionDescriptor.ariaLabel`). */
   ariaLabel?: string
 }
 
-/** A library-drawn text label (an SVG pill), already positioned. */
 export interface SvgLabelInput {
-  /** `{connectionId}:{labelId}` */
   key: string
+  connectionId: string
   point: Point
   rotation: number
   text: string
@@ -60,6 +59,7 @@ export interface SvgLabelInput {
 export interface SvgPortInput {
   key: string
   point: Point
+  connectionIds: string[]
 }
 
 export interface SvgLayerHandlers {
@@ -69,31 +69,10 @@ export interface SvgLayerHandlers {
   onConnectionKeydown?: (id: string, event: KeyboardEvent) => void
 }
 
-export interface SvgLayerBehavior {
-  /** Connections become keyboard-focusable buttons (and can show a selected state). */
-  selectable?: boolean
-  /** Instance-wide default for `ConnectionStyle.animated`. */
-  defaultAnimated?: boolean | ConnectionFlow
-}
-
-/** Instance-wide look for the built-in port dot — see `VisualLinkerOptions.defaultPortXxx`. Each field left unset keeps that CSS variable's own params.ts-sourced fallback, so plain external CSS overrides still work undisturbed. */
-export interface DefaultPortStyle {
-  radius?: number
-  color?: string
-  strokeColor?: string
-  strokeWidth?: number
-}
-
-// One shared default look via CSS variables, so consumers can restyle every
-// connection/port from the outside without fighting inline-style specificity —
-// per-connection ConnectionStyle overrides below are set inline instead,
-// since those are an explicit request to differ from the shared default.
-// Also covers the drag cursor for .vl-draggable/.vl-dragging: a <style>
-// element applies document-wide regardless of where it sits in the DOM, so
-// this reaches the plain HTML block wrappers outside the svg too.
 const DEFAULT_STYLE = `
   .vl-connection { fill: none; stroke: var(--vl-line-color, ${DEFAULT_LINE_COLOR}); stroke-width: var(--vl-line-width, ${DEFAULT_LINE_WIDTH}); }
-  .vl-connection--active, .vl-connection--selected { stroke: var(--vl-line-color-active, var(--vl-line-color, ${DEFAULT_LINE_COLOR})); stroke-width: calc(var(--vl-line-width, ${DEFAULT_LINE_WIDTH}) + ${ACTIVE_LINE_WIDTH_BUMP}); }
+  .vl-connection--selected { stroke: var(--vl-line-color-selected, var(--vl-line-color-active, var(--vl-line-color, ${DEFAULT_LINE_COLOR}))); stroke-width: calc(var(--vl-line-width, ${DEFAULT_LINE_WIDTH}) + ${ACTIVE_LINE_WIDTH_BUMP}); }
+  .vl-connection--active { stroke: var(--vl-line-color-active, var(--vl-line-color, ${DEFAULT_LINE_COLOR})); stroke-width: calc(var(--vl-line-width, ${DEFAULT_LINE_WIDTH}) + ${ACTIVE_LINE_WIDTH_BUMP}); }
   .vl-connection--selected { filter: drop-shadow(0 0 3px var(--vl-selected-color, ${DEFAULT_SELECTION_COLOR})); }
   .vl-connection--focus { filter: drop-shadow(0 0 3px var(--vl-focus-color, ${DEFAULT_SELECTION_COLOR})); }
   .vl-label { pointer-events: none; }
@@ -110,16 +89,28 @@ const DEFAULT_STYLE = `
   .vl-dragging { cursor: grabbing; }
 `
 
+function measureText(text: SVGTextElement): { width: number; height: number } {
+  try {
+    const box = text.getBBox()
+    return { width: box.width, height: box.height }
+  } catch {
+    return { width: 0, height: 0 }
+  }
+}
+
+function setStyle(el: SVGElement, name: string, value: string | number | undefined) {
+  if (value === undefined || value === '') el.style.removeProperty(name)
+  else el.style.setProperty(name, String(value))
+}
+
 export function createSvgLayer(
   container: HTMLElement,
-  handlers: SvgLayerHandlers = {},
-  defaultPortStyle: DefaultPortStyle = {},
-  markerSizeDefaults: MarkerSizeDefaults = {},
-  behavior: SvgLayerBehavior = {},
+  handlers: SvgLayerHandlers,
+  getConfig: () => VisualLinkerConfig,
 ) {
   const instanceId = svgLayerInstanceCounter++
-  const selectable = behavior.selectable ?? false
-  const defaultAnimated = behavior.defaultAnimated
+  const config = () => getConfig()
+  const selectable = () => config().interaction?.selectable ?? false
 
   if (getComputedStyle(container).position === 'static') {
     container.style.position = 'relative'
@@ -131,15 +122,6 @@ export function createSvgLayer(
   svg.style.inset = '0'
   svg.style.overflow = 'visible'
   svg.style.pointerEvents = 'none'
-  // Only ever set when the caller actually passed a value — leaving a field
-  // unset here means the CSS variable's own fallback (above) still applies,
-  // so restyling everything via a plain external stylesheet keeps working.
-  if (defaultPortStyle.radius != null) svg.style.setProperty('--vl-port-radius', String(defaultPortStyle.radius))
-  if (defaultPortStyle.color != null) svg.style.setProperty('--vl-port-fill', defaultPortStyle.color)
-  if (defaultPortStyle.strokeColor != null)
-    svg.style.setProperty('--vl-port-stroke-color', defaultPortStyle.strokeColor)
-  if (defaultPortStyle.strokeWidth != null)
-    svg.style.setProperty('--vl-port-stroke-width', String(defaultPortStyle.strokeWidth))
 
   const style = document.createElementNS(SVG_NS, 'style')
   style.textContent = DEFAULT_STYLE
@@ -147,9 +129,6 @@ export function createSvgLayer(
 
   const defs = document.createElementNS(SVG_NS, 'defs')
   svg.appendChild(defs)
-  // Library-drawn labels live in a group that stays the last child, so every
-  // path / hit area / port dot — created now or later, raised or not — is
-  // painted underneath them.
   const labelsLayer = document.createElementNS(SVG_NS, 'g')
   labelsLayer.setAttribute('class', 'vl-labels')
   svg.appendChild(labelsLayer)
@@ -157,27 +136,54 @@ export function createSvgLayer(
 
   const paths = new Map<string, SVGPathElement>()
   const hits = new Map<string, SVGPathElement>()
-  // The animated-flow overlay of each animated connection, kept right after its line.
   const flows = new Map<string, SVGPathElement>()
   const labelEls = new Map<string, SVGGElement>()
+  const labelInputs = new Map<string, SvgLabelInput>()
   const ports = new Map<string, SVGCircleElement>()
+  const portInputs = new Map<string, SvgPortInput>()
   const markerDefs = new Map<string, SVGMarkerElement>()
   const styles = new Map<string, ConnectionStyle | undefined>()
+  const ariaLabels = new Map<string, string>()
   const endpointKeys = new Map<string, { from?: string; to?: string; fromClipped?: boolean; toClipped?: boolean }>()
   let markerIdCounter = 0
   let usedMarkerSignatures = new Set<string>()
-  // Preserved across update() calls so a connection stays highlighted through
-  // a data refresh (e.g. dragging a block shouldn't un-highlight a hovered edge).
   let activeIds = new Set<string>()
   let selectedIds = new Set<string>()
+  let highlightedIds = new Set<string>()
+  let focusedIds = new Set<string>()
 
-  /** Returns the id of a `<marker>` def matching this config, creating (and caching) one if needed. */
+  function statesFor(id: string): ActiveStates {
+    return {
+      highlight: highlightedIds.has(id),
+      hover: activeIds.has(id),
+      selected: selectedIds.has(id),
+      focus: focusedIds.has(id),
+    }
+  }
+
+  function statesForAny(ids: string[]): ActiveStates {
+    const result = { ...NO_STATES }
+    for (const id of ids) {
+      const states = statesFor(id)
+      result.highlight ||= states.highlight
+      result.hover ||= states.hover
+      result.selected ||= states.selected
+      result.focus ||= states.focus
+    }
+    return result
+  }
+
+  function applyTheme() {
+    for (const [name, value] of themeVariables(config().theme)) setStyle(svg, name, value)
+  }
+
   function ensureMarker(
     position: 'start' | 'end',
-    config: ConnectionStyle['startMarker'],
+    input: MarkerStyle | false | undefined,
     fallbackColor: string,
+    fallbackOpacity: number | undefined,
   ): string | null {
-    const resolved = resolveMarkerConfig(config, fallbackColor, markerSizeDefaults)
+    const resolved = resolveMarkerConfig(input, fallbackColor, config().markers?.sizes ?? {}, fallbackOpacity)
     if (!resolved) return null
     const signature = markerSignature(position, resolved)
     usedMarkerSignatures.add(signature)
@@ -190,81 +196,52 @@ export function createSvgLayer(
     return el.id
   }
 
-  /** Overrides a marker config's `size` while hovered — a no-op for `false`/unset config or an unset `markerSize`, so it never turns a bare/hidden endpoint into a marker. */
-  function withHoverMarkerSize(
-    config: ConnectionStyle['startMarker'],
-    markerSize: number | undefined,
-  ): ConnectionStyle['startMarker'] {
-    if (markerSize == null || !config) return config
-    const base = typeof config === 'string' ? { shape: config } : config
-    return { ...base, size: markerSize }
-  }
-
-  /**
-   * Applies a connection's resting or hover appearance. Without an explicit
-   * `hoverStyle`, `active` only toggles the `.vl-connection--active` class —
-   * the CSS-driven width bump — leaving stroke/marker color untouched, exactly
-   * as before this existed. With `hoverStyle`, each given field (color/width/
-   * dashed/markerSize) overrides the base value while active, and the markers
-   * are recolored to match so the arrow doesn't fall out of sync with the line.
-   */
-  function applyConnectionAppearance(
-    id: string,
-    el: SVGPathElement,
-    style: ConnectionStyle | undefined,
-    active: boolean,
-    selected: boolean,
-    hidden: { start: boolean; end: boolean },
-  ) {
-    // Layers, later wins: base style < selectedStyle < hoverStyle.
-    const hover = active ? style?.hoverStyle : undefined
-    const pick = selected ? style?.selectedStyle : undefined
-    const color = hover?.color ?? pick?.color ?? style?.color
-    // An explicit `width` is set inline, which outranks the class's CSS width
-    // bump — so apply the same bump inline too, or the highlight would vanish.
+  function applyConnectionAppearance(id: string, el: SVGPathElement, hidden: { start: boolean; end: boolean }) {
+    const own = styles.get(id)
+    const view = resolveLines(config().lines, own)
+    const active = statesFor(id)
+    const stateFields = statesOf(view, active)
+    const base = baseOf(view)
+    const emphasised = active.hover || active.highlight || active.selected
+    const color = stateFields.color ?? base.color
     const width =
-      hover?.width ??
-      pick?.width ??
-      ((active || selected) && style?.width != null ? style.width + ACTIVE_LINE_WIDTH_BUMP : style?.width)
-    const dashed = hover?.dashed ?? pick?.dashed ?? style?.dashed
-    const markerSize = hover?.markerSize ?? pick?.markerSize
+      stateFields.width ?? (emphasised && base.width != null ? base.width + ACTIVE_LINE_WIDTH_BUMP : base.width)
+    const dashed = stateFields.dashed ?? base.dashed
+    const opacity = stateFields.opacity ?? base.opacity
 
     el.style.stroke = color ?? ''
     el.style.strokeWidth = width != null ? String(width) : ''
     el.style.strokeDasharray = dashed ? DASH_PATTERN : ''
 
-    const startMarkerId = ensureMarker(
-      'start',
-      withHoverMarkerSize(style?.startMarker, markerSize),
-      color ?? DEFAULT_LINE_COLOR,
-    )
-    const endMarkerId = ensureMarker(
-      'end',
-      withHoverMarkerSize(style?.endMarker, markerSize),
-      color ?? DEFAULT_LINE_COLOR,
-    )
-    el.style.markerStart = startMarkerId && !hidden.start ? `url(#${startMarkerId})` : ''
-    el.style.markerEnd = endMarkerId && !hidden.end ? `url(#${endMarkerId})` : ''
+    const fallbackColor = color ?? themeLineColor(config().theme, active)
+    const markerIds: Record<'start' | 'end', string | null> = { start: null, end: null }
+    for (const position of ['start', 'end'] as const) {
+      const merged = mergeMarkerInputs(config().markers?.[position], own?.markers?.[position])
+      markerIds[position] = ensureMarker(position, merged ? layered(merged, active) : merged, fallbackColor, opacity)
+    }
+    el.style.markerStart = markerIds.start && !hidden.start ? `url(#${markerIds.start})` : ''
+    el.style.markerEnd = markerIds.end && !hidden.end ? `url(#${markerIds.end})` : ''
 
-    applyFlow(id, el, style, width, color, active || selected)
+    const tint = applyFlow(id, el, view.animated, width, color, emphasised, opacity)
+    const combined = opacity === undefined && tint === undefined ? undefined : (opacity ?? 1) * (tint ?? 1)
+    el.style.strokeOpacity = combined === undefined ? '' : String(combined)
   }
 
-  /** Creates, updates or removes the animated-flow overlay that rides on a connection's line. */
   function applyFlow(
     id: string,
     el: SVGPathElement,
-    style: ConnectionStyle | undefined,
+    animated: ConnectionStyle['animated'],
     lineWidth: number | undefined,
     lineColor: string | undefined,
     emphasised: boolean,
-  ) {
-    const flow = resolveFlow(style?.animated, defaultAnimated)
+    opacity: number | undefined,
+  ): number | undefined {
+    const flow = resolveFlow(animated, undefined)
     let overlay = flows.get(id)
     if (!flow) {
       overlay?.remove()
       flows.delete(id)
-      el.style.strokeOpacity = ''
-      return
+      return undefined
     }
     if (!overlay) {
       overlay = document.createElementNS(SVG_NS, 'path')
@@ -277,22 +254,20 @@ export function createSvgLayer(
     const period = flow.dash + flow.gap
     overlay.setAttribute('d', el.getAttribute('d') ?? '')
     overlay.style.setProperty('--vl-flow-period', `${period}px`)
-    // Tint mode: the pattern wears the line's color (the CSS class for a
-    // line using the shared variable, inline for an explicit/hover color) and
-    // the line itself is dimmed, so the moving part is what you see.
     const tint = flow.color === undefined
     overlay.classList.toggle('vl-flow--tint', tint)
     overlay.style.stroke = flow.color ?? lineColor ?? ''
-    el.style.strokeOpacity = tint ? String(emphasised ? FLOW_TINT_BASE_OPACITY_ACTIVE : FLOW_TINT_BASE_OPACITY) : ''
+    overlay.style.strokeOpacity = opacity === undefined ? '' : String(opacity)
     overlay.style.strokeWidth = String(flowStrokeWidth(flow, lineWidth ?? DEFAULT_LINE_WIDTH))
     overlay.style.strokeDasharray = `${flow.dash} ${flow.gap}`
     overlay.style.animationName = flow.direction === 'backward' ? 'vl-flow-backward' : 'vl-flow-forward'
     overlay.style.animationDuration = `${period / flow.speed}s`
+    return tint ? (emphasised ? FLOW_TINT_BASE_OPACITY_ACTIVE : FLOW_TINT_BASE_OPACITY) : undefined
   }
 
   function activeEndpointKeys(): Set<string> {
     const keys = new Set<string>()
-    for (const id of activeIds) {
+    for (const id of [...activeIds, ...highlightedIds]) {
       const endpoints = endpointKeys.get(id)
       if (endpoints?.from) keys.add(endpoints.from)
       if (endpoints?.to) keys.add(endpoints.to)
@@ -300,12 +275,6 @@ export function createSvgLayer(
     return keys
   }
 
-  /**
-   * A non-highlighted connection hides its marker on any end that sits on the
-   * same point as a highlighted connection's end — otherwise its resting-size
-   * marker would overlap the highlighted (and possibly enlarged) one there.
-   * Only the markers go; the line itself stays.
-   */
   function hiddenEnds(id: string, active: boolean, activeKeys: Set<string>) {
     const endpoints = endpointKeys.get(id)
     return {
@@ -314,11 +283,9 @@ export function createSvgLayer(
     }
   }
 
-  /** Paints selected, then hovered, connections last (but still under the port dots), so a sibling's line never crosses over an enlarged marker. */
   function raiseActivePaths() {
-    // Raised paths go just under the port dots — or, with none, under the labels.
     const anchor = svg.querySelector('.vl-port') ?? labelsLayer
-    for (const id of [...selectedIds, ...activeIds]) {
+    for (const id of [...selectedIds, ...highlightedIds, ...activeIds]) {
       const el = paths.get(id)
       if (!el) continue
       svg.insertBefore(el, anchor)
@@ -327,16 +294,77 @@ export function createSvgLayer(
     }
   }
 
+  function configureHit(id: string, hit: SVGPathElement) {
+    const label = ariaLabels.get(id)
+    if (selectable()) {
+      hit.removeAttribute('aria-hidden')
+      hit.setAttribute('tabindex', '0')
+      hit.setAttribute('role', 'button')
+      hit.setAttribute('aria-pressed', String(selectedIds.has(id)))
+      if (label) hit.setAttribute('aria-label', label)
+    } else {
+      hit.setAttribute('aria-hidden', 'true')
+      hit.removeAttribute('tabindex')
+      hit.removeAttribute('role')
+      hit.removeAttribute('aria-pressed')
+      hit.removeAttribute('aria-label')
+    }
+  }
+
+  function paintPort(key: string, el: SVGCircleElement) {
+    const input = portInputs.get(key)
+    const active = statesForAny(input?.connectionIds ?? [])
+    const portStyle = layered(config().ports, active)
+    setStyle(el, 'r', portStyle.radius != null ? `${portStyle.radius}px` : undefined)
+    setStyle(el, 'fill', portStyle.fill)
+    setStyle(el, 'stroke', portStyle.stroke)
+    setStyle(el, 'stroke-width', portStyle.strokeWidth)
+    setStyle(el, 'opacity', portStyle.opacity)
+  }
+
+  function paintLabel(key: string, g: SVGGElement) {
+    const input = labelInputs.get(key)
+    if (!input) return
+    const active = statesFor(input.connectionId)
+    const labelStyle = layered(config().labels, active)
+    const rect = g.firstElementChild as SVGRectElement
+    const text = g.lastElementChild as SVGTextElement
+
+    g.setAttribute('class', input.className ? `vl-label ${input.className}` : 'vl-label')
+    if (text.textContent !== input.text) text.textContent = input.text
+    setStyle(rect, 'fill', labelStyle.background)
+    setStyle(rect, 'stroke', labelStyle.border)
+    setStyle(text, 'fill', labelStyle.color)
+    setStyle(g, 'opacity', labelStyle.opacity)
+    const fontSize = labelStyle.fontSize ?? LABEL_FONT_SIZE
+    setStyle(text, 'font-size', labelStyle.fontSize != null ? `${labelStyle.fontSize}px` : undefined)
+
+    const measured = measureText(text)
+    const width = measured.width || input.text.length * LABEL_FALLBACK_CHAR_WIDTH * (fontSize / LABEL_FONT_SIZE)
+    const height = measured.height || fontSize
+    const boxWidth = width + (labelStyle.paddingX ?? LABEL_PADDING_X) * 2
+    const boxHeight = height + (labelStyle.paddingY ?? LABEL_PADDING_Y) * 2
+    rect.setAttribute('x', String(-boxWidth / 2))
+    rect.setAttribute('y', String(-boxHeight / 2))
+    rect.setAttribute('width', String(boxWidth))
+    rect.setAttribute('height', String(boxHeight))
+    rect.setAttribute('rx', String(boxHeight / 2))
+    g.setAttribute('transform', `translate(${input.point.x} ${input.point.y}) rotate(${input.rotation})`)
+  }
+
   function applyAll() {
     const activeKeys = activeEndpointKeys()
     for (const [id, el] of paths) {
-      const active = activeIds.has(id)
+      const active = activeIds.has(id) || highlightedIds.has(id)
       const selected = selectedIds.has(id)
       el.classList.toggle('vl-connection--active', active)
       el.classList.toggle('vl-connection--selected', selected)
-      if (selectable) hits.get(id)?.setAttribute('aria-pressed', String(selected))
-      applyConnectionAppearance(id, el, styles.get(id), active, selected, hiddenEnds(id, active, activeKeys))
+      el.classList.toggle('vl-connection--focus', focusedIds.has(id))
+      if (selectable()) hits.get(id)?.setAttribute('aria-pressed', String(selected))
+      applyConnectionAppearance(id, el, hiddenEnds(id, active, activeKeys))
     }
+    for (const [key, el] of ports) paintPort(key, el)
+    for (const [key, g] of labelEls) paintLabel(key, g)
     raiseActivePaths()
   }
 
@@ -345,16 +373,17 @@ export function createSvgLayer(
     svg.setAttribute('height', String(height))
   }
 
-  /** Creates, updates or removes the library-drawn text labels. */
   function updateLabels(inputs: SvgLabelInput[]) {
     const keys = new Set(inputs.map((input) => input.key))
     for (const [key, g] of labelEls) {
       if (!keys.has(key)) {
         g.remove()
         labelEls.delete(key)
+        labelInputs.delete(key)
       }
     }
     for (const input of inputs) {
+      labelInputs.set(input.key, input)
       let g = labelEls.get(input.key)
       if (!g) {
         g = document.createElementNS(SVG_NS, 'g')
@@ -363,32 +392,38 @@ export function createSvgLayer(
         labelsLayer.appendChild(g)
         labelEls.set(input.key, g)
       }
-      g.setAttribute('class', input.className ? `vl-label ${input.className}` : 'vl-label')
-      const rect = g.firstElementChild as SVGRectElement
-      const text = g.lastElementChild as SVGTextElement
-      if (text.textContent !== input.text) text.textContent = input.text
-
-      // Size the pill to the text — measured when the environment can, else estimated.
-      let width = 0
-      let height = 0
-      try {
-        const box = text.getBBox()
-        width = box.width
-        height = box.height
-      } catch {
-        // no layout engine (e.g. a test DOM) — fall through to the estimate
-      }
-      if (!width) width = input.text.length * LABEL_FALLBACK_CHAR_WIDTH
-      if (!height) height = LABEL_FONT_SIZE
-      const boxWidth = width + LABEL_PADDING_X * 2
-      const boxHeight = height + LABEL_PADDING_Y * 2
-      rect.setAttribute('x', String(-boxWidth / 2))
-      rect.setAttribute('y', String(-boxHeight / 2))
-      rect.setAttribute('width', String(boxWidth))
-      rect.setAttribute('height', String(boxHeight))
-      rect.setAttribute('rx', String(boxHeight / 2))
-      g.setAttribute('transform', `translate(${input.point.x} ${input.point.y}) rotate(${input.rotation})`)
+      paintLabel(input.key, g)
     }
+  }
+
+  function createConnection(id: string): SVGPathElement {
+    const el = document.createElementNS(SVG_NS, 'path')
+    el.setAttribute('class', 'vl-connection')
+    el.setAttribute('role', 'img')
+    svg.insertBefore(el, labelsLayer)
+    paths.set(id, el)
+
+    const hit = document.createElementNS(SVG_NS, 'path')
+    hit.setAttribute('class', 'vl-connection-hit')
+    hit.addEventListener('pointerenter', (event) => handlers.onConnectionEnter?.(id, event))
+    hit.addEventListener('pointerleave', (event) => handlers.onConnectionLeave?.(id, event))
+    hit.addEventListener('click', (event) => handlers.onConnectionClick?.(id, event as unknown as PointerEvent))
+    hit.addEventListener('keydown', (event) => {
+      if (selectable()) handlers.onConnectionKeydown?.(id, event)
+    })
+    hit.addEventListener('focus', () => {
+      if (!selectable()) return
+      focusedIds.add(id)
+      applyAll()
+    })
+    hit.addEventListener('blur', () => {
+      if (!focusedIds.delete(id)) return
+      applyAll()
+    })
+    svg.insertBefore(hit, labelsLayer)
+    hits.set(id, hit)
+    configureHit(id, hit)
+    return el
   }
 
   function update(nextPaths: SvgPathInput[], nextPorts: SvgPortInput[], nextLabels: SvgLabelInput[] = []) {
@@ -403,6 +438,8 @@ export function createSvgLayer(
         flows.get(id)?.remove()
         flows.delete(id)
         styles.delete(id)
+        ariaLabels.delete(id)
+        focusedIds.delete(id)
         endpointKeys.delete(id)
       }
     }
@@ -413,52 +450,24 @@ export function createSvgLayer(
         fromClipped: input.fromClipped,
         toClipped: input.toClipped,
       })
+      styles.set(input.id, input.style)
+      if (input.ariaLabel) ariaLabels.set(input.id, input.ariaLabel)
     }
     const activeKeys = activeEndpointKeys()
     for (const input of nextPaths) {
-      let el = paths.get(input.id)
-      if (!el) {
-        el = document.createElementNS(SVG_NS, 'path')
-        el.setAttribute('class', 'vl-connection')
-        el.setAttribute('role', 'img')
-        svg.insertBefore(el, labelsLayer)
-        paths.set(input.id, el)
-
-        const hit = document.createElementNS(SVG_NS, 'path')
-        hit.setAttribute('class', 'vl-connection-hit')
-        hit.addEventListener('pointerenter', (event) => handlers.onConnectionEnter?.(input.id, event))
-        hit.addEventListener('pointerleave', (event) => handlers.onConnectionLeave?.(input.id, event))
-        hit.addEventListener('click', (event) =>
-          handlers.onConnectionClick?.(input.id, event as unknown as PointerEvent),
-        )
-        if (selectable) {
-          hit.setAttribute('tabindex', '0')
-          hit.setAttribute('role', 'button')
-          hit.setAttribute('aria-pressed', 'false')
-          hit.addEventListener('keydown', (event) => handlers.onConnectionKeydown?.(input.id, event))
-          // Keyboard focus is shown on the visible line (the hit path is invisible).
-          hit.addEventListener('focus', () => paths.get(input.id)?.classList.add('vl-connection--focus'))
-          hit.addEventListener('blur', () => paths.get(input.id)?.classList.remove('vl-connection--focus'))
-        } else {
-          hit.setAttribute('aria-hidden', 'true')
-        }
-        svg.insertBefore(hit, labelsLayer)
-        hits.set(input.id, hit)
-      }
+      const el = paths.get(input.id) ?? createConnection(input.id)
       el.setAttribute('d', input.d)
-      if (input.ariaLabel) {
-        el.setAttribute('aria-label', input.ariaLabel)
-        if (selectable) hits.get(input.id)?.setAttribute('aria-label', input.ariaLabel)
+      if (input.ariaLabel) el.setAttribute('aria-label', input.ariaLabel)
+      const hit = hits.get(input.id)
+      if (hit) {
+        hit.setAttribute('d', input.d)
+        configureHit(input.id, hit)
       }
-      el.classList.toggle('vl-connection--active', activeIds.has(input.id))
+      const emphasised = activeIds.has(input.id) || highlightedIds.has(input.id)
+      el.classList.toggle('vl-connection--active', emphasised)
       el.classList.toggle('vl-connection--selected', selectedIds.has(input.id))
-      styles.set(input.id, input.style)
-      const active = activeIds.has(input.id)
-      const selected = selectedIds.has(input.id)
-      if (selectable) hits.get(input.id)?.setAttribute('aria-pressed', String(selected))
-      applyConnectionAppearance(input.id, el, input.style, active, selected, hiddenEnds(input.id, active, activeKeys))
-
-      hits.get(input.id)?.setAttribute('d', input.d)
+      el.classList.toggle('vl-connection--focus', focusedIds.has(input.id))
+      applyConnectionAppearance(input.id, el, hiddenEnds(input.id, emphasised, activeKeys))
     }
     raiseActivePaths()
 
@@ -474,9 +483,11 @@ export function createSvgLayer(
       if (!nextPortKeys.has(key)) {
         el.remove()
         ports.delete(key)
+        portInputs.delete(key)
       }
     }
     for (const input of nextPorts) {
+      portInputs.set(input.key, input)
       let el = ports.get(input.key)
       if (!el) {
         el = document.createElementNS(SVG_NS, 'circle')
@@ -486,18 +497,29 @@ export function createSvgLayer(
       }
       el.setAttribute('cx', String(input.point.x))
       el.setAttribute('cy', String(input.point.y))
+      paintPort(input.key, el)
     }
 
     updateLabels(nextLabels)
   }
 
-  /** Toggles the `.vl-connection--active` highlight (plus each connection's own `hoverStyle`, if any) on exactly the given connection ids. */
-  function setActiveConnections(ids: Iterable<string>) {
+  function applyConfig() {
+    applyTheme()
+    for (const [id, hit] of hits) configureHit(id, hit)
+    if (!selectable() && focusedIds.size > 0) focusedIds = new Set()
+    applyAll()
+  }
+
+  function setHoveredConnections(ids: Iterable<string>) {
     activeIds = new Set(ids)
     applyAll()
   }
 
-  /** Toggles the `.vl-connection--selected` state (plus each connection's own `selectedStyle`, if any) on exactly the given connection ids. */
+  function setHighlightedConnections(ids: Iterable<string>) {
+    highlightedIds = new Set(ids)
+    applyAll()
+  }
+
   function setSelectedConnections(ids: Iterable<string>) {
     selectedIds = new Set(ids)
     applyAll()
@@ -509,18 +531,24 @@ export function createSvgLayer(
     hits.clear()
     flows.clear()
     labelEls.clear()
+    labelInputs.clear()
     ports.clear()
+    portInputs.clear()
     markerDefs.clear()
     styles.clear()
+    ariaLabels.clear()
     endpointKeys.clear()
   }
+
+  applyTheme()
 
   return {
     resize,
     update,
-    setActiveConnections,
+    applyConfig,
+    setHoveredConnections,
+    setHighlightedConnections,
     setSelectedConnections,
-    /** Whether `node` is part of this layer — used to tell a click on a connection from a click elsewhere. */
     contains: (node: Node) => svg.contains(node),
     destroy,
   }

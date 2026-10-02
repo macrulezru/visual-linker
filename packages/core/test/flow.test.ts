@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { flowStrokeWidth, resolveFlow } from '../src/flow'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker, type VisualLinker } from '../src/visual-linker'
 
 describe('resolveFlow', () => {
@@ -57,7 +58,7 @@ describe('flow overlay', () => {
       container.appendChild(el)
       return { id, el }
     }
-    engine = createVisualLinker(container, { showPorts: false, ...options })
+    engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
     engine.setBlocks([make('a', 0), make('b', 300)])
     const connection = { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style }
     engine.setConnections([connection])
@@ -124,9 +125,9 @@ describe('flow overlay', () => {
   })
 
   it('takes defaultAnimated from the options, and `animated: false` opts a connection out', () => {
-    expect(setup({}, { defaultAnimated: true }).overlays()).toHaveLength(1)
+    expect(setup({}, { lines: { animated: true } }).overlays()).toHaveLength(1)
     engine!.destroy()
-    expect(setup({ animated: false }, { defaultAnimated: true }).overlays()).toHaveLength(0)
+    expect(setup({ animated: false }, { lines: { animated: true } }).overlays()).toHaveLength(0)
   })
 
   it('removes the overlay with its connection', () => {
@@ -136,7 +137,7 @@ describe('flow overlay', () => {
   })
 
   it('stays attached to its line when the line is raised for hover/selection', () => {
-    const { overlays, line, container } = setup({ animated: true }, { selectable: true })
+    const { overlays, line, container } = setup({ animated: true }, { interaction: { selectable: true } })
     engine!.setSelectedConnections(['ab'])
     expect(line().nextElementSibling).toBe(overlays()[0])
     expect(container.querySelectorAll('path.vl-flow')).toHaveLength(1)

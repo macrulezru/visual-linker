@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mergeConfig } from '../src/config'
 import { createVisualLinker, type VisualLinker } from '../src/visual-linker'
 import { VLConnectionCurveEnum, VLFixedSideEnum, VLMarkerShapeEnum } from '../src/enums'
 
@@ -65,7 +66,7 @@ describe('createVisualLinker interactivity', () => {
   it('highlights the connections incident to a hovered block', () => {
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    engine = createVisualLinker(container, { showPorts: false })
+    engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -87,7 +88,7 @@ describe('createVisualLinker interactivity', () => {
   it('emits connection:click when the connection hit-area is clicked', () => {
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    engine = createVisualLinker(container, { showPorts: false })
+    engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -107,7 +108,7 @@ describe('createVisualLinker interactivity', () => {
 
   it('drags a block by translating it and fires the drag lifecycle events', () => {
     const a = makeBlock('a', { left: 0, top: 0 })
-    engine = createVisualLinker(container, { showPorts: false, draggable: true })
+    engine = createVisualLinker(container, { ports: { show: false }, blocks: { draggable: true } })
     engine.setBlocks([{ id: 'a', el: a }])
 
     const events: string[] = []
@@ -130,7 +131,7 @@ describe('createVisualLinker interactivity', () => {
     const handle = document.createElement('div')
     a.appendChild(handle)
 
-    engine = createVisualLinker(container, { showPorts: false, draggable: true })
+    engine = createVisualLinker(container, { ports: { show: false }, blocks: { draggable: true } })
     engine.setBlocks([{ id: 'a', el: a, dragHandle: handle }])
 
     firePointer(handle, 'pointerdown', { clientX: 10, clientY: 10 })
@@ -147,7 +148,7 @@ describe('createVisualLinker interactivity', () => {
     // Deliberately off-grid start position (33, 54): the snap target is
     // computed from the block's absolute page position, not the drag delta.
     const a = makeBlock('a', { left: 33, top: 54 })
-    engine = createVisualLinker(container, { showPorts: false, draggable: true, dragGridSize: 20 })
+    engine = createVisualLinker(container, { ports: { show: false }, blocks: { draggable: true, drag: { grid: 20 } } })
     engine.setBlocks([{ id: 'a', el: a }])
 
     firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
@@ -162,7 +163,7 @@ describe('createVisualLinker interactivity', () => {
 
   it('moves freely (no snapping) when dragGridSize is left unset', () => {
     const a = makeBlock('a', { left: 33, top: 54 })
-    engine = createVisualLinker(container, { showPorts: false, draggable: true })
+    engine = createVisualLinker(container, { ports: { show: false }, blocks: { draggable: true } })
     engine.setBlocks([{ id: 'a', el: a }])
 
     firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
@@ -178,7 +179,10 @@ describe('createVisualLinker interactivity', () => {
     it("clamps a drag to the container's own box with dragBounds: 'container'", () => {
       container.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
       const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
-      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: 'container' })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { bounds: 'container' } },
+      })
       engine.setBlocks([{ id: 'a', el: a }])
 
       firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
@@ -201,7 +205,10 @@ describe('createVisualLinker interactivity', () => {
       document.body.appendChild(box)
 
       const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
-      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: box })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { bounds: box } },
+      })
       engine.setBlocks([{ id: 'a', el: a }])
 
       firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
@@ -218,9 +225,8 @@ describe('createVisualLinker interactivity', () => {
       container.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
       const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
       engine = createVisualLinker(container, {
-        showPorts: false,
-        draggable: true,
-        dragBounds: { left: 10, top: 5, right: 10, bottom: 5 },
+        ports: { show: false },
+        blocks: { draggable: true, drag: { bounds: { left: 10, top: 5, right: 10, bottom: 5 } } },
       })
       engine.setBlocks([{ id: 'a', el: a }])
 
@@ -236,7 +242,10 @@ describe('createVisualLinker interactivity', () => {
     it("a block's own dragBounds overrides the instance-wide default", () => {
       container.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 1000)
       const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
-      engine = createVisualLinker(container, { showPorts: false, draggable: true, dragBounds: 'container' })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { bounds: 'container' } },
+      })
       engine.setBlocks([{ id: 'a', el: a, dragBounds: { left: 0, top: 0, right: 900, bottom: 960 } }])
 
       firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
@@ -261,7 +270,7 @@ describe('auto-side ports on a child element', () => {
     const target = makeBlock('target', { left: 400, top: 0 })
     const group = makeMovableGroupBlock(0)
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'target', el: target },
       { id: 'group', el: group.el, ports: [{ id: 'p', target: '[data-port="p"]', side: VLFixedSideEnum.AUTO }] },
@@ -292,7 +301,7 @@ describe('auto-side ports on a child element', () => {
     const source = makeBlock('source', { left: 0, top: 300, width: 100, height: 40 })
     const target = makeBlock('target', { left: 0, top: 0, width: 100, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'source', el: source, ports: [{ id: 'p', side: [VLFixedSideEnum.BOTTOM, VLFixedSideEnum.RIGHT] }] },
       { id: 'target', el: target },
@@ -327,7 +336,7 @@ describe("anchorBlockId — port renders on another block's border", () => {
 
     const target = makeBlock('target', { left: 400, top: 0, width: 100, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       {
         id: 'group',
@@ -366,7 +375,7 @@ describe("anchorBlockId — port renders on another block's border", () => {
     const targetA = makeBlock('targetA', { left: 400, top: 0, width: 100, height: 40 })
     const targetB = makeBlock('targetB', { left: 400, top: 200, width: 100, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       {
         id: 'group',
@@ -415,7 +424,7 @@ describe('anchorEl — anchors to an arbitrary element, not just a registered bl
 
     const target = makeBlock('target', { left: 500, top: 0, width: 100, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       {
         id: 'group',
@@ -453,7 +462,7 @@ describe('connection start/end markers', () => {
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
     const c = makeBlock('c', { left: 400, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -464,9 +473,9 @@ describe('connection start/end markers', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { startMarker: VLMarkerShapeEnum.CIRCLE, endMarker: VLMarkerShapeEnum.ARROW },
+        style: { markers: { start: VLMarkerShapeEnum.CIRCLE, end: VLMarkerShapeEnum.ARROW } },
       },
-      { id: 'bc', from: { blockId: 'b' }, to: { blockId: 'c' }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
+      { id: 'bc', from: { blockId: 'b' }, to: { blockId: 'c' }, style: { markers: { end: VLMarkerShapeEnum.ARROW } } },
     ])
 
     const paths = [...container.querySelectorAll('path.vl-connection')] as SVGPathElement[]
@@ -493,13 +502,18 @@ describe('connection start/end markers', () => {
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
     ])
     engine.setConnections([
-      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { endMarker: VLMarkerShapeEnum.DIAMOND } },
+      {
+        id: 'ab',
+        from: { blockId: 'a' },
+        to: { blockId: 'b' },
+        style: { markers: { end: VLMarkerShapeEnum.DIAMOND } },
+      },
     ])
     expect(container.querySelectorAll('marker')).toHaveLength(1)
 
@@ -522,7 +536,12 @@ describe('connection start/end markers', () => {
       { id: 'b', el: b },
     ])
     engine.setConnections([
-      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { endMarker: VLMarkerShapeEnum.DIAMOND } },
+      {
+        id: 'ab',
+        from: { blockId: 'a' },
+        to: { blockId: 'b' },
+        style: { markers: { end: VLMarkerShapeEnum.DIAMOND } },
+      },
     ])
 
     // 'a' (start, no explicit marker) still gets its generic dot; 'b' (explicit endMarker) does not.
@@ -549,7 +568,9 @@ describe('connection start/end markers', () => {
       { id: 'a', el: a },
       { id: 'b', el: b },
     ])
-    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { endMarker: false } }])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { markers: { end: false } } },
+    ])
 
     // 'a' (start, no explicit marker) still gets its generic dot; 'b' (endMarker: false) gets neither dot nor marker.
     expect(container.querySelectorAll('circle.vl-port')).toHaveLength(1)
@@ -577,24 +598,34 @@ describe('connection start/end markers', () => {
 
     const a1 = makeBlock('a1', { left: 0, top: 0 })
     const b1 = makeBlock('b1', { left: 200, top: 0 })
-    const engineA = createVisualLinker(containerA, { showPorts: false })
+    const engineA = createVisualLinker(containerA, { ports: { show: false } })
     engineA.setBlocks([
       { id: 'a1', el: a1 },
       { id: 'b1', el: b1 },
     ])
     engineA.setConnections([
-      { id: 'c', from: { blockId: 'a1' }, to: { blockId: 'b1' }, style: { endMarker: VLMarkerShapeEnum.CIRCLE } },
+      {
+        id: 'c',
+        from: { blockId: 'a1' },
+        to: { blockId: 'b1' },
+        style: { markers: { end: VLMarkerShapeEnum.CIRCLE } },
+      },
     ])
 
     const a2 = makeBlock('a2', { left: 0, top: 0 })
     const b2 = makeBlock('b2', { left: 200, top: 0 })
-    const engineB = createVisualLinker(containerB, { showPorts: false })
+    const engineB = createVisualLinker(containerB, { ports: { show: false } })
     engineB.setBlocks([
       { id: 'a2', el: a2 },
       { id: 'b2', el: b2 },
     ])
     engineB.setConnections([
-      { id: 'c', from: { blockId: 'a2' }, to: { blockId: 'b2' }, style: { endMarker: VLMarkerShapeEnum.SQUARE } },
+      {
+        id: 'c',
+        from: { blockId: 'a2' },
+        to: { blockId: 'b2' },
+        style: { markers: { end: VLMarkerShapeEnum.SQUARE } },
+      },
     ])
 
     const idA = containerA.querySelector('marker')!.id
@@ -618,37 +649,52 @@ describe('connection start/end markers', () => {
   })
 })
 
-describe('instance-wide default port dot style', () => {
-  it('leaves the CSS variables unset (falls through to the stylesheet default) when no defaultPortXxx option is given', () => {
+describe('instance-wide port dot style', () => {
+  function dotOf(config: Parameters<typeof createVisualLinker>[1]) {
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const engine = createVisualLinker(container)
+    const a = makeBlock('a', { left: 0, top: 0 })
+    const b = makeBlock('b', { left: 200, top: 0 })
+    const engine = createVisualLinker(container, config)
+    engine.setBlocks([
+      { id: 'a', el: a },
+      { id: 'b', el: b },
+    ])
+    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' } }])
+    return { engine, a, dot: container.querySelector('circle.vl-port') as SVGCircleElement, container }
+  }
 
-    const svg = container.querySelector('svg.vl-svg') as SVGSVGElement
-    expect(svg.style.getPropertyValue('--vl-port-radius')).toBe('')
-    expect(svg.style.getPropertyValue('--vl-port-fill')).toBe('')
-    expect(svg.style.getPropertyValue('--vl-port-stroke-color')).toBe('')
-    expect(svg.style.getPropertyValue('--vl-port-stroke-width')).toBe('')
-
+  it('sets nothing inline (the stylesheet default applies) when no ports option is given', () => {
+    const { engine, dot } = dotOf({})
+    expect(dot.style.getPropertyValue('r')).toBe('')
+    expect(dot.style.getPropertyValue('fill')).toBe('')
+    expect(dot.style.getPropertyValue('stroke')).toBe('')
+    expect(dot.style.getPropertyValue('stroke-width')).toBe('')
     engine.destroy()
   })
 
-  it('sets only the CSS variables an option actually overrides', () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const engine = createVisualLinker(container, {
-      defaultPortRadius: 6,
-      defaultPortColor: 'pink',
-      defaultPortStrokeColor: 'purple',
-      defaultPortStrokeWidth: 2,
+  it('applies only the fields an option actually overrides', () => {
+    const { engine, dot } = dotOf({ ports: { radius: 6, fill: 'pink', stroke: 'purple', strokeWidth: 2 } })
+    expect(dot.style.getPropertyValue('r')).toBe('6px')
+    expect(dot.style.getPropertyValue('fill')).toBe('pink')
+    expect(dot.style.getPropertyValue('stroke')).toBe('purple')
+    expect(dot.style.getPropertyValue('stroke-width')).toBe('2')
+    engine.destroy()
+  })
+
+  it('switches to the hover and selected variants with their connection, and back', () => {
+    const { engine, a, dot } = dotOf({
+      ports: { radius: 4, hover: { radius: 7, fill: 'gold' }, selected: { stroke: 'red' } },
     })
-
-    const svg = container.querySelector('svg.vl-svg') as SVGSVGElement
-    expect(svg.style.getPropertyValue('--vl-port-radius')).toBe('6')
-    expect(svg.style.getPropertyValue('--vl-port-fill')).toBe('pink')
-    expect(svg.style.getPropertyValue('--vl-port-stroke-color')).toBe('purple')
-    expect(svg.style.getPropertyValue('--vl-port-stroke-width')).toBe('2')
-
+    expect(dot.style.getPropertyValue('r')).toBe('4px')
+    firePointer(a, 'pointerenter')
+    expect(dot.style.getPropertyValue('r')).toBe('7px')
+    expect(dot.style.getPropertyValue('fill')).toBe('gold')
+    firePointer(a, 'pointerleave')
+    expect(dot.style.getPropertyValue('r')).toBe('4px')
+    expect(dot.style.getPropertyValue('fill')).toBe('')
+    engine.setSelectedConnections(['ab'])
+    expect(dot.style.getPropertyValue('stroke')).toBe('red')
     engine.destroy()
   })
 })
@@ -660,9 +706,8 @@ describe('instance-wide default marker size, per shape', () => {
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
     const engine = createVisualLinker(container, {
-      showPorts: false,
-      defaultSquareMarkerSize: 12,
-      defaultDiamondMarkerSize: 14,
+      ports: { show: false },
+      markers: { sizes: { square: 12, diamond: 14 } },
     })
     engine.setBlocks([
       { id: 'a', el: a },
@@ -673,7 +718,7 @@ describe('instance-wide default marker size, per shape', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { startMarker: VLMarkerShapeEnum.SQUARE, endMarker: VLMarkerShapeEnum.DIAMOND },
+        style: { markers: { start: VLMarkerShapeEnum.SQUARE, end: VLMarkerShapeEnum.DIAMOND } },
       },
     ])
 
@@ -688,7 +733,7 @@ describe('instance-wide default marker size, per shape', () => {
     document.body.appendChild(container)
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false, defaultSquareMarkerSize: 12 })
+    const engine = createVisualLinker(container, { ports: { show: false }, markers: { sizes: { square: 12 } } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -698,7 +743,7 @@ describe('instance-wide default marker size, per shape', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { endMarker: { shape: VLMarkerShapeEnum.SQUARE, size: 99 } },
+        style: { markers: { end: { shape: VLMarkerShapeEnum.SQUARE, size: 99 } } },
       },
     ])
 
@@ -715,7 +760,7 @@ describe('connection hoverStyle', () => {
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -725,7 +770,7 @@ describe('connection hoverStyle', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { color: 'blue', endMarker: VLMarkerShapeEnum.ARROW },
+        style: { color: 'blue', markers: { end: VLMarkerShapeEnum.ARROW } },
       },
     ])
 
@@ -746,7 +791,7 @@ describe('connection hoverStyle', () => {
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -771,7 +816,7 @@ describe('connection hoverStyle', () => {
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -784,8 +829,8 @@ describe('connection hoverStyle', () => {
         style: {
           color: 'green',
           width: 2,
-          endMarker: VLMarkerShapeEnum.ARROW,
-          hoverStyle: { color: 'red', width: 5, dashed: true },
+          markers: { end: VLMarkerShapeEnum.ARROW },
+          hover: { color: 'red', width: 5, dashed: true },
         },
       },
     ])
@@ -812,13 +857,13 @@ describe('connection hoverStyle', () => {
     engine.destroy()
   })
 
-  it('applies hoverStyle.markerSize to the marker while active, and reverts to the resting size on deactivate', () => {
+  it('applies a marker hover size while active, and reverts to the resting size on deactivate', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -828,10 +873,7 @@ describe('connection hoverStyle', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: {
-          endMarker: { shape: VLMarkerShapeEnum.ARROW, size: 6 },
-          hoverStyle: { markerSize: 14 },
-        },
+        style: { markers: { end: { shape: VLMarkerShapeEnum.ARROW, size: 6, hover: { size: 14 } } } },
       },
     ])
 
@@ -852,20 +894,18 @@ describe('connection hoverStyle', () => {
     engine.destroy()
   })
 
-  it('does not conjure a marker out of hoverStyle.markerSize alone when no startMarker/endMarker is set', () => {
+  it('does not conjure a marker out of a hover-only line style when no marker is configured', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
     ])
-    engine.setConnections([
-      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { hoverStyle: { markerSize: 14 } } },
-    ])
+    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { hover: { width: 4 } } }])
 
     firePointer(a, 'pointerenter')
     const path = container.querySelector('path.vl-connection') as SVGPathElement
@@ -882,13 +922,13 @@ describe('connection hoverStyle', () => {
 
     const a = makeBlock('a', { left: 0, top: 0 })
     const b = makeBlock('b', { left: 200, top: 0 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
     ])
     engine.setConnections([
-      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { hoverStyle: { color: 'red' } } },
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { hover: { color: 'red' } } },
     ])
 
     firePointer(a, 'pointerenter')
@@ -916,7 +956,7 @@ describe('per-connection and instance-wide curve geometry config', () => {
 
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 1000, top: 0, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -926,7 +966,9 @@ describe('per-connection and instance-wide curve geometry config', () => {
     const defaultPath = parseBezier(container.querySelector('path.vl-connection')!.getAttribute('d')!)
     expect(defaultPath.c1.x - defaultPath.from.x).toBeCloseTo(160, 5) // default maxReach caps it here
 
-    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { curveMaxReach: 300 } }])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { bezier: { maxReach: 300 } } },
+    ])
     const widerPath = parseBezier(container.querySelector('path.vl-connection')!.getAttribute('d')!)
     expect(widerPath.c1.x - widerPath.from.x).toBeCloseTo(300, 5)
 
@@ -939,7 +981,7 @@ describe('per-connection and instance-wide curve geometry config', () => {
 
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 1000, top: 0, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false, defaultCurveMaxReach: 300 })
+    const engine = createVisualLinker(container, { ports: { show: false }, lines: { bezier: { maxReach: 300 } } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -959,13 +1001,15 @@ describe('per-connection and instance-wide curve geometry config', () => {
     // b sits diagonally from a, so the resolved side's normal and the true direction diverge.
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 300, top: 300, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
     ])
 
-    engine.setConnections([{ id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { curveAngleBlend: 0 } }])
+    engine.setConnections([
+      { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style: { bezier: { angleBlend: 0 } } },
+    ])
     const straightNormal = parseBezier(container.querySelector('path.vl-connection')!.getAttribute('d')!)
     // No lean at all: the control point stays exactly on the horizontal/vertical cardinal axis.
     expect(straightNormal.c1.y).toBeCloseTo(straightNormal.from.y, 5)
@@ -975,7 +1019,7 @@ describe('per-connection and instance-wide curve geometry config', () => {
         id: 'ab',
         from: { blockId: 'a' },
         to: { blockId: 'b' },
-        style: { curveAngleBlend: 1, curveAngleMaxOffset: 90 },
+        style: { bezier: { angleBlend: 1, angleMaxOffset: 90 } },
       },
     ])
     const fullyLeaning = parseBezier(container.querySelector('path.vl-connection')!.getAttribute('d')!)
@@ -997,7 +1041,7 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
     const b4 = makeBlock('b4', { left: 0, top: 200, width: 200, height: 40 })
     const b5 = makeBlock('b5', { left: 300, top: 250, width: 200, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'b3', el: b3, ports: [{ id: 'out', side: VLFixedSideEnum.BOTTOM }] },
       { id: 'b4', el: b4, ports: [{ id: 'in', side: VLFixedSideEnum.TOP }] },
@@ -1010,13 +1054,13 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
         id: 'toNear',
         from: { blockId: 'b3', portId: 'out' },
         to: { blockId: 'b4', portId: 'in' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0, maxTrunkReach: 200 },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0, maxTrunkReach: 200 } },
       },
       {
         id: 'toFar',
         from: { blockId: 'b3', portId: 'out' },
         to: { blockId: 'b5', portId: 'in' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0, maxTrunkReach: 200 },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0, maxTrunkReach: 200 } },
       },
     ])
 
@@ -1044,7 +1088,7 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
     const top = makeBlock('top', { left: 300, top: -10, width: 100, height: 40 })
     const bottom = makeBlock('bottom', { left: 300, top: 100, width: 100, height: 40 })
 
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'source', el: source, ports: [{ id: 'out', side: VLFixedSideEnum.RIGHT }] },
       { id: 'top', el: top, ports: [{ id: 'in', side: VLFixedSideEnum.TOP }] },
@@ -1055,13 +1099,13 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
         id: 'toTop',
         from: { blockId: 'source', portId: 'out' },
         to: { blockId: 'top', portId: 'in' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0 },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0 } },
       },
       {
         id: 'toBottom',
         from: { blockId: 'source', portId: 'out' },
         to: { blockId: 'bottom', portId: 'in' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0 },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0 } },
       },
     ])
 
@@ -1083,7 +1127,7 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
 
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 200, top: 100, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a, ports: [{ id: 'out', side: VLFixedSideEnum.RIGHT }] },
       { id: 'b', el: b, ports: [{ id: 'in', side: VLFixedSideEnum.TOP }] },
@@ -1093,7 +1137,7 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
         id: 'ab',
         from: { blockId: 'a', portId: 'out' },
         to: { blockId: 'b', portId: 'in' },
-        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, cornerRadius: 0 },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0 } },
       },
     ])
 
@@ -1110,7 +1154,7 @@ describe("curve: 'smoothstep' — grouped orthogonal routing", () => {
 
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 200, top: 100, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a, ports: [{ id: 'out', side: VLFixedSideEnum.RIGHT }] },
       { id: 'b', el: b, ports: [{ id: 'in', side: VLFixedSideEnum.TOP }] },
@@ -1138,7 +1182,7 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
 
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 300, top: 0, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
 
     const layouts: { id: string; from: unknown; to: unknown; mid: unknown }[][] = []
     engine.on('layout', ({ connections }) => layouts.push(connections))
@@ -1164,7 +1208,7 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
 
     const group = makeMovableGroupBlock(0)
     const target = makeBlock('target', { left: 400, top: 0, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
 
     let lastMid: { x: number; y: number } | undefined
     engine.on('layout', ({ connections }) => {
@@ -1200,7 +1244,7 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
     const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
     const b = makeBlock('b', { left: 300, top: 0, width: 100, height: 40 })
     const c = makeBlock('c', { left: 300, top: 200, width: 100, height: 40 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
 
     let lastPorts: { key: string; blockId: string; portId?: string }[] = []
     engine.on('layout', ({ ports }) => {
@@ -1214,7 +1258,7 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
     ])
     engine.setConnections([
       { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' } },
-      { id: 'ac', from: { blockId: 'a' }, to: { blockId: 'c' }, style: { endMarker: VLMarkerShapeEnum.ARROW } },
+      { id: 'ac', from: { blockId: 'a' }, to: { blockId: 'c' }, style: { markers: { end: VLMarkerShapeEnum.ARROW } } },
     ])
 
     // 'a' is shared by both connections but resolves to the SAME point for
@@ -1230,7 +1274,12 @@ describe("'layout' event — exposes resolved connection geometry for overlay co
 
 describe('markers on endpoints shared with a highlighted connection', () => {
   const dot = { shape: VLMarkerShapeEnum.CIRCLE, color: '#fff', strokeColor: '#00f', strokeWidth: 2 }
-  const style = { startMarker: dot, endMarker: { ...dot, arrow: true }, hoverStyle: { markerSize: 10 } }
+  const style = {
+    markers: {
+      start: { ...dot, hover: { size: 10 } },
+      end: { ...dot, arrow: true, hover: { size: 10 } },
+    },
+  }
 
   it("hides only the siblings' markers on the shared end, keeps their lines and their other end", () => {
     const container = document.createElement('div')
@@ -1239,7 +1288,7 @@ describe('markers on endpoints shared with a highlighted connection', () => {
     const b = makeBlock('b', { left: 0, top: 100, right: 100, bottom: 140 })
     const c = makeBlock('c', { left: 0, top: 200, right: 100, bottom: 240 })
     const g = makeBlock('g', { left: 400, top: 100, right: 500, bottom: 140 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a },
       { id: 'b', el: b },
@@ -1279,7 +1328,7 @@ describe('markers on endpoints shared with a highlighted connection', () => {
     const a = makeBlock('a', { left: 0, top: 100, right: 100, bottom: 140 })
     const g = makeBlock('g', { left: 400, top: 0, right: 500, bottom: 40 })
     const h = makeBlock('h', { left: 400, top: 200, right: 500, bottom: 240 })
-    const engine = createVisualLinker(container, { showPorts: false })
+    const engine = createVisualLinker(container, { ports: { show: false } })
     engine.setBlocks([
       { id: 'a', el: a, ports: [{ id: 'out', side: VLFixedSideEnum.RIGHT }] },
       { id: 'g', el: g },
@@ -1337,7 +1386,7 @@ describe('portSpread', () => {
           width: size,
           height: 40,
         })
-    const engine = createVisualLinker(container, { showPorts: false, ...options.instance })
+    const engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options.instance))
     let layouts: Layout[] = []
     engine.on('layout', ({ connections }) => (layouts = connections))
     engine.setBlocks([
@@ -1390,8 +1439,8 @@ describe('portSpread', () => {
   })
 
   it('resolves port → block → instance, with `false` switching an inherited setting off', () => {
-    expect(new Set(Object.values(fanIn({ instance: { defaultPortSpread: true } })).map((l) => l.to.x)).size).toBe(3)
-    const off = fanIn({ instance: { defaultPortSpread: true }, targetPort: { spread: false } })
+    expect(new Set(Object.values(fanIn({ instance: { ports: { spread: true } } })).map((l) => l.to.x)).size).toBe(3)
+    const off = fanIn({ instance: { ports: { spread: true } }, targetPort: { spread: false } })
     expect(new Set(Object.values(off).map((l) => l.to.x)).size).toBe(1)
   })
 
