@@ -121,3 +121,76 @@ describe('clipToScrollParents', () => {
     engine.destroy()
   })
 })
+
+describe('clipToScrollParents with an anchored port', () => {
+  type Layout = { from: { x: number; y: number }; fromClipped?: boolean }
+
+  function anchored(build: (container: HTMLElement) => { block: HTMLElement; row: HTMLElement }) {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    rectOf(container, 0, 0, 800, 600)
+    const { block, row } = build(container)
+
+    const outside = document.createElement('div')
+    rectOf(outside, 100, 400, 100, 40)
+    container.append(outside)
+
+    const engine = createVisualLinker(container, { markers: { start: { shape: 'circle' } } })
+    let layout: Layout | undefined
+    engine.on('layout', ({ connections }) => (layout = connections[0]))
+    engine.setBlocks([
+      {
+        id: 'card',
+        el: block,
+        ports: [{ id: 'row', target: row, side: 'bottom' as never, anchorBlockId: 'card' }],
+      },
+      { id: 'outside', el: outside },
+    ])
+    engine.setConnections([{ id: 'c', from: { blockId: 'card', portId: 'row' }, to: { blockId: 'outside' } }])
+    const path = container.querySelector('path.vl-connection') as SVGPathElement
+    return { engine, layout: () => layout!, path, row }
+  }
+
+  it('keeps the point on the anchor border when a clipping wrapper ends before it', () => {
+    const { engine, layout, path } = anchored((container) => {
+      const block = document.createElement('div')
+      rectOf(block, 0, 0, 300, 200)
+      const wrapper = document.createElement('div')
+      wrapper.style.overflow = 'hidden'
+      rectOf(wrapper, 20, 40, 260, 40)
+      const row = document.createElement('div')
+      rectOf(row, 20, 40, 80, 40)
+      wrapper.append(row)
+      block.append(wrapper)
+      container.append(block)
+      return { block, row }
+    })
+    expect(layout().fromClipped).toBe(false)
+    expect(layout().from.y).toBe(200)
+    expect(path.style.markerStart).not.toBe('')
+    engine.destroy()
+  })
+
+  it('still pins an anchored port whose row has scrolled out of its scroller', () => {
+    const { engine, layout, path, row } = anchored((container) => {
+      const block = document.createElement('div')
+      block.style.overflowY = 'auto'
+      rectOf(block, 0, 100, 200, 100)
+      const row = document.createElement('div')
+      rectOf(row, 0, 300, 200, 30)
+      block.append(row)
+      container.append(block)
+      return { block, row }
+    })
+    expect(layout().fromClipped).toBe(true)
+    expect(layout().from.y).toBe(200)
+    expect(path.style.markerStart).toBe('')
+
+    rectOf(row, 0, 130, 200, 30)
+    engine.refresh()
+    expect(layout().fromClipped).toBe(false)
+    expect(layout().from.y).toBe(200)
+    expect(path.style.markerStart).not.toBe('')
+    engine.destroy()
+  })
+})

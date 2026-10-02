@@ -426,6 +426,10 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     return () => cleanups.forEach((cleanup) => cleanup())
   }
 
+  function centerOfRect(rect: DOMRect): Point {
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }
+
   function centerOf(el: HTMLElement, containerRect: DOMRect): Point {
     const rect = el.getBoundingClientRect()
     return { x: rect.left + rect.width / 2 - containerRect.left, y: rect.top + rect.height / 2 - containerRect.top }
@@ -439,7 +443,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     const targetRect = portElement(block, port).getBoundingClientRect()
     const anchorEl = port.anchorEl ?? (port.anchorBlockId ? blocks.get(port.anchorBlockId)?.el : undefined)
     const rect = anchorEl ? anchorEl.getBoundingClientRect() : targetRect
-    const anchorCenter = toLocal({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, containerRect)
+    const anchorCenter = toLocal(centerOfRect(rect), containerRect)
 
     const sideSetting = port.side ?? config.ports?.side
     const side = Array.isArray(sideSetting)
@@ -468,10 +472,10 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           right: visible.right - containerRect.left,
           bottom: visible.bottom - containerRect.top,
         }
-        const result = clampToRect(point, local)
-        if (result.clipped) {
+        const probe = anchorEl ? toLocal(centerOfRect(targetRect), containerRect) : point
+        if (clampToRect(probe, local).clipped) {
           if (clip === 'hide') return null
-          point = result.point
+          point = clampToRect(point, local).point
           clipped = true
         }
       }
