@@ -40,6 +40,7 @@ export interface SvgPathInput {
   id: string
   d: string
   style?: ConnectionStyle
+  hoverable?: boolean
   fromKey?: string
   toKey?: string
   fromClipped?: boolean
@@ -83,7 +84,7 @@ const DEFAULT_STYLE = `
   @keyframes vl-flow-forward { to { stroke-dashoffset: calc(var(--vl-flow-period) * -1); } }
   @keyframes vl-flow-backward { to { stroke-dashoffset: var(--vl-flow-period); } }
   @media (prefers-reduced-motion: reduce) { .vl-flow { animation-name: none !important; } }
-  .vl-connection-hit { fill: none; stroke: transparent; stroke-width: ${HIT_AREA_STROKE_WIDTH}; pointer-events: stroke; cursor: pointer; outline: none; }
+  .vl-connection-hit { fill: none; stroke: transparent; stroke-width: ${HIT_AREA_STROKE_WIDTH}; pointer-events: stroke; outline: none; }
   .vl-port { fill: var(--vl-port-fill, ${DEFAULT_PORT_FILL}); stroke: var(--vl-port-stroke-color, ${DEFAULT_PORT_STROKE_COLOR}); stroke-width: var(--vl-port-stroke-width, ${DEFAULT_PORT_STROKE_WIDTH}); r: var(--vl-port-radius, ${DEFAULT_PORT_RADIUS}); }
   .vl-draggable { cursor: grab; }
   .vl-dragging { cursor: grabbing; }
@@ -144,6 +145,7 @@ export function createSvgLayer(
   const markerDefs = new Map<string, SVGMarkerElement>()
   const styles = new Map<string, ConnectionStyle | undefined>()
   const ariaLabels = new Map<string, string>()
+  const hoverableFlags = new Map<string, boolean | undefined>()
   const endpointKeys = new Map<string, { from?: string; to?: string; fromClipped?: boolean; toClipped?: boolean }>()
   let markerIdCounter = 0
   let usedMarkerSignatures = new Set<string>()
@@ -151,6 +153,13 @@ export function createSvgLayer(
   let selectedIds = new Set<string>()
   let highlightedIds = new Set<string>()
   let focusedIds = new Set<string>()
+
+  const hoverEnabled = (id: string) => hoverableFlags.get(id) ?? config().interaction?.hover ?? false
+
+  function pruneHovered() {
+    const next = [...activeIds].filter(hoverEnabled)
+    if (next.length !== activeIds.size) activeIds = new Set(next)
+  }
 
   function statesFor(id: string): ActiveStates {
     return {
@@ -296,6 +305,7 @@ export function createSvgLayer(
 
   function configureHit(id: string, hit: SVGPathElement) {
     const label = ariaLabels.get(id)
+    hit.style.cursor = selectable() || hoverEnabled(id) ? 'pointer' : ''
     if (selectable()) {
       hit.removeAttribute('aria-hidden')
       hit.setAttribute('tabindex', '0')
@@ -439,6 +449,7 @@ export function createSvgLayer(
         flows.delete(id)
         styles.delete(id)
         ariaLabels.delete(id)
+        hoverableFlags.delete(id)
         focusedIds.delete(id)
         endpointKeys.delete(id)
       }
@@ -451,8 +462,10 @@ export function createSvgLayer(
         toClipped: input.toClipped,
       })
       styles.set(input.id, input.style)
+      hoverableFlags.set(input.id, input.hoverable)
       if (input.ariaLabel) ariaLabels.set(input.id, input.ariaLabel)
     }
+    pruneHovered()
     const activeKeys = activeEndpointKeys()
     for (const input of nextPaths) {
       const el = paths.get(input.id) ?? createConnection(input.id)
@@ -505,13 +518,14 @@ export function createSvgLayer(
 
   function applyConfig() {
     applyTheme()
+    pruneHovered()
     for (const [id, hit] of hits) configureHit(id, hit)
     if (!selectable() && focusedIds.size > 0) focusedIds = new Set()
     applyAll()
   }
 
   function setHoveredConnections(ids: Iterable<string>) {
-    activeIds = new Set(ids)
+    activeIds = new Set([...ids].filter(hoverEnabled))
     applyAll()
   }
 
@@ -537,6 +551,7 @@ export function createSvgLayer(
     markerDefs.clear()
     styles.clear()
     ariaLabels.clear()
+    hoverableFlags.clear()
     endpointKeys.clear()
   }
 

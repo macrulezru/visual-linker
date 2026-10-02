@@ -36,6 +36,7 @@ const connections: ConnectionDescriptor[] = relations.map(([from, to]) => ({
 
 const config: VisualLinkerConfig = {
   lines: { curve: 'smoothstep', highlight: { width: 2.5 }, hover: { width: 3 } },
+  interaction: { hover: true, highlight: true },
   markers: { end: { shape: 'arrow' } },
   ports: { spread: true },
   blocks: { draggable: true, drag: { grid: 10, bounds: 'container' } },

@@ -134,6 +134,7 @@ function label(id: string) {
         blocks: { drag: { grid: 20 } },
         ports: { radius: 5, fill: '#6d5bf6', stroke: '#fff', strokeWidth: 2 },
         markers: { sizes: { square: 10, diamond: 10 } },
+        interaction: { hover: true, highlight: true },
       }"
       @connection-click="lastEvent = `connection-click: ${$event.id}`"
       @connection-mouseenter="lastEvent = `connection-mouseenter: ${$event.id}`"

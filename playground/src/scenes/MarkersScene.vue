@@ -8,6 +8,7 @@ import {
 
 // Every mini-demo below is draggable, confined to its own small canvas.
 const dragConfig: VisualLinkerConfig = { blocks: { draggable: true, drag: { bounds: 'container' } } }
+const hoverConfig: VisualLinkerConfig = { ...dragConfig, interaction: { hover: true } }
 const portSlotConfig: VisualLinkerConfig = { ...dragConfig, ports: { show: false } }
 
 function single(style: ConnectionDescriptor['style']): ConnectionDescriptor[] {
@@ -84,7 +85,7 @@ const multiLabelConnections: ConnectionDescriptor[] = [
         <h3>hover states</h3>
         <p class="caption">hover the line — color, width, dashed and marker size all change together</p>
         <div class="canvas">
-          <VisualLinker :connections="hoverConnections" :config="dragConfig">
+          <VisualLinker :connections="hoverConnections" :config="hoverConfig">
             <div v-vl-block="'a'" class="card node tl">A</div>
             <div v-vl-block="'b'" class="card node br">B</div>
           </VisualLinker>

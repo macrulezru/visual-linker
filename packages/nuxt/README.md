@@ -98,7 +98,7 @@ separate list of module-only names to learn:
 | `ports`       | the built-in dot (`show`, `radius`, `fill`, `stroke`, states), default `side`/`offset`, `spread`              |
 | `labels`      | the look of library-drawn connection labels, with states                                                      |
 | `blocks`      | `draggable`, `drag: { grid, bounds }` (values must be plain data — `'container'` or an inset object)          |
-| `interaction` | `selectable`, `clipToScrollParents`                                                                           |
+| `interaction` | `hover`, `highlight`, `selectable`, `clipToScrollParents`                                                     |
 
 Everything is optional and nothing is hardcoded in the module: a field left
 out falls through to `@macrulez/visual-linker-core`'s own built-in default.

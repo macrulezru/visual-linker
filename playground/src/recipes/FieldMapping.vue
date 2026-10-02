@@ -49,7 +49,7 @@ const mappings = ref<ConnectionDescriptor[]>([
 const config: VisualLinkerConfig = {
   lines: { curve: 'bezier', width: 2, hover: { width: 3 } },
   markers: { start: { shape: 'circle' }, end: { shape: 'circle' } },
-  interaction: { selectable: true, clipToScrollParents: 'pin' },
+  interaction: { hover: true, selectable: true, clipToScrollParents: 'pin' },
 }
 
 const picked = ref<string | null>(null)

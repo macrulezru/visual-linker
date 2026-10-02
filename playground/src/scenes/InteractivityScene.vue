@@ -41,7 +41,7 @@ const boardConfig = computed<VisualLinkerConfig>(() => ({
     jumps: jumps.value,
     animated: animated.value ? { speed: 45 } : false,
   },
-  interaction: { selectable: true },
+  interaction: { selectable: true, hover: true, highlight: true },
 }))
 
 const baseStyle: ConnectionStyle = {

@@ -58,7 +58,10 @@ describe('flow overlay', () => {
       container.appendChild(el)
       return { id, el }
     }
-    engine = createVisualLinker(container, mergeConfig({ ports: { show: false } }, options))
+    engine = createVisualLinker(
+      container,
+      mergeConfig({ ports: { show: false }, interaction: { hover: true, highlight: true } }, options),
+    )
     engine.setBlocks([make('a', 0), make('b', 300)])
     const connection = { id: 'ab', from: { blockId: 'a' }, to: { blockId: 'b' }, style }
     engine.setConnections([connection])

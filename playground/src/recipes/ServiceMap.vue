@@ -46,6 +46,7 @@ const connections = computed<ConnectionDescriptor[]>(() =>
 const config: VisualLinkerConfig = {
   theme: darkTheme,
   lines: { curve: 'smoothstep', width: 2, highlight: { width: 3 } },
+  interaction: { highlight: true },
 }
 
 let timer: ReturnType<typeof setInterval>
