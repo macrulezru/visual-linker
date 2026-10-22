@@ -62,6 +62,43 @@ describe('#port overlay', () => {
     wrapper.unmount()
   })
 
+  it('passes role, connected, state and hovered to the slot and honours slotPointerEvents', async () => {
+    const seen: Record<string, unknown>[] = []
+    const wrapper = mount(VisualLinker, {
+      props: { blocks: [{ id: 'a' }], connections: [], config: { ports: { slotPointerEvents: false } } },
+      slots: {
+        port: (params: Record<string, unknown>) => {
+          seen.push(params)
+          return h('i')
+        },
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    emitLayout({
+      connections: [],
+      ports: [
+        {
+          key: 'a:1:1',
+          blockId: 'a',
+          portId: 'p',
+          point: { x: 1, y: 1 },
+          role: 'source',
+          connected: 0,
+          state: 'candidate',
+          hovered: true,
+        },
+      ],
+    })
+    await flushPromises()
+
+    expect(seen.at(-1)).toMatchObject({ role: 'source', connected: 0, state: 'candidate', hovered: true })
+    expect(wrapper.find('.vl-port-slot').attributes('style')).toContain('pointer-events: none')
+
+    wrapper.unmount()
+  })
+
   it('renders nothing when the port slot is not used, even if showPorts stays default', async () => {
     const wrapper = mount(VisualLinker, {
       props: { blocks: [{ id: 'a' }], connections: [] },

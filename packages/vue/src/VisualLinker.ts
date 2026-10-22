@@ -399,10 +399,18 @@ export const VisualLinker = defineComponent({
                   left: `${port.point.x}px`,
                   top: `${port.point.y}px`,
                   transform: 'translate(-50%, -50%)',
-                  pointerEvents: 'auto',
+                  pointerEvents: props.config.ports?.slotPointerEvents === false ? 'none' : 'auto',
                 },
               },
-              portSlot({ blockId: port.blockId, portId: port.portId, point: port.point }),
+              portSlot({
+                blockId: port.blockId,
+                portId: port.portId,
+                point: port.point,
+                ...(port.role !== undefined ? { role: port.role } : {}),
+                ...(port.connected !== undefined ? { connected: port.connected } : {}),
+                ...(port.state !== undefined ? { state: port.state } : {}),
+                ...(port.hovered !== undefined ? { hovered: port.hovered } : {}),
+              }),
             ),
           )
         }

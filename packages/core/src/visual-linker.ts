@@ -41,6 +41,8 @@ import {
   DEFAULT_MAX_TRUNK_REACH,
   DEFAULT_OBSTACLE_PADDING,
   DEFAULT_PORT_OFFSET,
+  DEFAULT_PORT_RADIUS,
+  DEFAULT_PORT_STROKE_WIDTH,
   DEFAULT_SHOW_PORTS,
   ROUTE_REGION_MARGIN,
 } from './params'
@@ -48,6 +50,8 @@ import { VLConnectionCurveEnum, VLFixedSideEnum } from './enums'
 import type {
   BlockDescriptor,
   ConnectCancelReason,
+  ConnectPortRole,
+  ConnectPortState,
   ConnectionDescriptor,
   ConnectionEndpoint,
   ConnectionLabel,
@@ -58,6 +62,7 @@ import type {
   LabelLayout,
   PortDescriptor,
   PortLayout,
+  PortRole,
   VisualLinkerConfig,
   VisualLinkerEventMap,
 } from './types'
@@ -118,6 +123,8 @@ interface ResolvedEnd {
   blockId: string
   portId?: string
   proxied: boolean
+  anchor?: Point
+  fade?: number
 }
 
 interface Pass {
@@ -210,6 +217,25 @@ function applyDragTransform(el: HTMLElement, offset: Point) {
 }
 
 /** Identifies a resolved endpoint by where it physically lands — two connections sharing a port on the same side get the same key. */
+const DEFAULT_IGNORE = 'button, a, input, select, textarea, [contenteditable], [data-vl-ignore]'
+
+function anchorOf(end: { point: Point; anchor?: Point }): Point {
+  return end.anchor ?? end.point
+}
+
+function sideNormal(side: FixedSide): Point {
+  switch (side) {
+    case VLFixedSideEnum.TOP:
+      return { x: 0, y: -1 }
+    case VLFixedSideEnum.RIGHT:
+      return { x: 1, y: 0 }
+    case VLFixedSideEnum.BOTTOM:
+      return { x: 0, y: 1 }
+    default:
+      return { x: -1, y: 0 }
+  }
+}
+
 function endpointKey(blockId: string, point: Point): string {
   return `${blockId}:${Math.round(point.x)}:${Math.round(point.y)}`
 }
@@ -311,7 +337,13 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
   const routeCache = createRouteCache()
 
   const selectable = () => config.interaction?.selectable ?? false
-  const showPorts = () => config.ports?.show ?? DEFAULT_SHOW_PORTS
+  const showMode = (): 'none' | 'connected' | 'all' => {
+    const value = config.ports?.show ?? DEFAULT_SHOW_PORTS
+    return value === false ? 'none' : value === 'all' ? 'all' : 'connected'
+  }
+  const domPorts = () => config.ports?.render === 'dom'
+  const hoverAttributesOn = () =>
+    Boolean(config.interaction?.hover || config.interaction?.highlight || config.interaction?.connect?.enabled)
   const connectEnabled = () => Boolean(config.interaction?.connect?.enabled)
   const clipMode = (): 'pin' | 'hide' | null => {
     const value = config.interaction?.clipToScrollParents
@@ -354,6 +386,27 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
   let lastBlockRects = new Map<string, Rect>()
   let lastContainerRect: DOMRect | null = null
   let hoveredBlockId: string | null = null
+  let hoveredLineBlocks = new Set<string>()
+  const hoverAttributed = new Map<HTMLElement, string>()
+  let proxyCountEls = new Map<HTMLElement, number>()
+  interface DeclaredPort {
+    block: BlockDescriptor
+    port: PortDescriptor
+    role: ConnectPortRole
+    el: HTMLElement
+    handleKey: string
+    portKey: string | null
+    point: Point | null
+    side: FixedSide
+    hidden: boolean
+    fade: number
+  }
+  let declaredPorts: DeclaredPort[] = []
+  let lastLayoutConnections: ConnectionLayout[] = []
+  let lastPortBase: PortLayout[] = []
+  let lastPortInputs: SvgPortInput[] = []
+  let coveredPortKeys = new Set<string>()
+  const domPortCleanups = new Map<HTMLElement, () => void>()
   let batchDepth = 0
   let renderPending = false
   const renderTimes: number[] = []
@@ -418,12 +471,23 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       onConnectionEnter(id) {
         svg.setHoveredConnections([id])
         const connection = connections.get(id)
-        if (connection) emit('connection:mouseenter', { connection })
+        if (connection) {
+          hoveredLineBlocks = new Set([connection.from.blockId, connection.to.blockId])
+          syncHoverAttributes()
+          for (const blockId of hoveredLineBlocks) emit('block:mouseenter', { blockId, via: 'line' })
+          emit('connection:mouseenter', { connection })
+        }
       },
       onConnectionLeave(id) {
         svg.setHoveredConnections([])
         const connection = connections.get(id)
-        if (connection) emit('connection:mouseleave', { connection })
+        if (connection) {
+          const left = hoveredLineBlocks
+          hoveredLineBlocks = new Set()
+          syncHoverAttributes()
+          for (const blockId of left) emit('block:mouseleave', { blockId, via: 'line' })
+          emit('connection:mouseleave', { connection })
+        }
       },
       onConnectionClick(id, event) {
         const connection = connections.get(id)
@@ -472,6 +536,10 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       svg.clearHandles()
       return
     }
+    if (domPorts()) {
+      svg.clearHandles()
+      return
+    }
     const inputs: SvgHandleInput[] = []
     for (const handle of handleInfos) {
       if (handle.hidden) continue
@@ -482,6 +550,8 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
         radius: HANDLE_MIN_RADIUS,
         state: handleStates.get(handle.key) ?? null,
         visible: handleVisible(handle),
+        covered: coveredPortKeys.has(handle.key),
+        ...(handle.fade !== undefined && handle.fade < 1 ? { opacity: handle.fade } : {}),
       })
     }
     svg.setHandles(inputs)
@@ -529,7 +599,29 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
 
   function blockRoleOf(block: BlockDescriptor | undefined) {
     if (!block) return false
-    return block.connect === undefined ? ('both' as const) : block.connect
+    if (block.connect !== undefined) return block.connect
+    const roles = (block.ports ?? []).map((port) => port.connect).filter((role) => role !== undefined)
+    if (roles.length > 0 && roles.length === (block.ports ?? []).length) {
+      if (roles.every((role) => role === false)) return false as const
+      if (roles.every((role) => role === 'source')) return 'source' as const
+      if (roles.every((role) => role === 'target')) return 'target' as const
+    }
+    return 'both' as const
+  }
+
+  function ignoredTarget(target: Element, within?: HTMLElement): boolean {
+    const selector = config.interaction?.connect?.ignore
+    if (selector === false) return false
+    const match = target.closest(selector ?? DEFAULT_IGNORE)
+    if (!match) return false
+    if (within && (match === within || !within.contains(match))) return false
+    return true
+  }
+
+  function sideFor(role: PortRole | undefined): FixedSide | undefined {
+    const sides = config.ports?.sides
+    const value = role ? sides?.[role] : undefined
+    return typeof value === 'string' && value !== VLFixedSideEnum.AUTO ? (value as FixedSide) : undefined
   }
 
   const connect = createConnectController({
@@ -574,7 +666,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       const box = lastBlockRects.get(blockId)
       if (!box) return null
       const center = { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 }
-      const side = resolveAutoSide(center, towards)
+      const side = sideFor('source') ?? resolveAutoSide(center, towards)
       const rect = {
         left: box.left,
         top: box.top,
@@ -586,9 +678,12 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       return { point: sidePoint(rect, side, DEFAULT_PORT_OFFSET), side }
     },
     previewPath,
+    ignored: (target) => ignoredTarget(target),
+    setDim: (value) => svg.setDim(value),
     setStates(states) {
       handleStates = states
       syncHandles()
+      refreshPortStates()
     },
     setPreview: (d, validity) => svg.setPreview(d, validity),
     stylePreview,
@@ -596,6 +691,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     emit,
     onStateChange() {
       syncHandles()
+      refreshPortStates()
     },
   })
 
@@ -649,9 +745,11 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       if (block.highlightable ?? config.interaction?.highlight ?? false) {
         svg.setHighlightedConnections(incidentConnectionIds(block.id))
       }
-      if (connectEnabled() && hoveredBlockId !== block.id) {
+      if (hoveredBlockId !== block.id) {
         hoveredBlockId = block.id
-        syncHandles()
+        if (connectEnabled()) syncHandles()
+        syncHoverAttributes()
+        refreshPortStates()
       }
       emit('block:mouseenter', { blockId: block.id })
     }
@@ -660,6 +758,8 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       if (hoveredBlockId === block.id) {
         hoveredBlockId = null
         if (connectEnabled()) syncHandles()
+        syncHoverAttributes()
+        refreshPortStates()
       }
       emit('block:mouseleave', { blockId: block.id })
     }
@@ -674,11 +774,15 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
 
     if (connectEnabled() && (config.interaction?.connect?.from ?? 'port') !== 'port') {
       const onBlockPointerDown = (event: PointerEvent) => {
-        if ((event.target as Element | null)?.closest?.('[data-vl-handle]')) return
+        const target = event.target as Element | null
+        if (target?.closest?.('[data-vl-handle]')) return
+        if (target && ignoredTarget(target, block.el)) return
         connect.startFromBlock(block.id, event, Boolean(draggable))
       }
       const onBlockClick = (event: MouseEvent) => {
-        if ((event.target as Element | null)?.closest?.('[data-vl-handle]')) return
+        const target = event.target as Element | null
+        if (target?.closest?.('[data-vl-handle]')) return
+        if (target && ignoredTarget(target, block.el)) return
         connect.clickBlock(block.id, event)
       }
       block.el.addEventListener('pointerdown', onBlockPointerDown)
@@ -776,6 +880,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     towards: Point,
     pass: Pass,
     proxied: boolean,
+    role?: PortRole,
   ): ResolvedEnd | null {
     const block = blocks.get(blockId)
     if (!block) return null
@@ -787,7 +892,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     const rect = anchorEl ? measure(anchorEl) : targetRect
     const anchorCenter = toLocal(centerOfRect(rect), containerRect)
 
-    const sideSetting = port.side ?? config.ports?.side
+    const sideSetting = port.side ?? (role ? config.ports?.sides?.[role] : undefined) ?? config.ports?.side
     const side = Array.isArray(sideSetting)
       ? resolveAutoSide(anchorCenter, towards, sideSetting)
       : sideSetting && sideSetting !== VLFixedSideEnum.AUTO
@@ -802,6 +907,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
 
     let point = toLocal(raw, containerRect)
     let clipped = false
+    let fade = 1
     const clip = clipMode()
     if (clip) {
       // The port's own element is what a scroller hides — a row inside a
@@ -819,6 +925,17 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           if (clip === 'hide') return null
           point = clampToRect(point, local).point
           clipped = true
+        } else {
+          const fadeEdge = config.ports?.fadeEdge ?? 0
+          if (fadeEdge > 0) {
+            const edge = Math.min(
+              probe.x - local.left,
+              local.right - probe.x,
+              probe.y - local.top,
+              local.bottom - probe.y,
+            )
+            fade = Math.min(Math.max(edge / fadeEdge, 0), 1)
+          }
         }
       }
     }
@@ -831,6 +948,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       blockId,
       portId,
       proxied,
+      fade,
     }
   }
 
@@ -843,10 +961,15 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     return null
   }
 
-  function resolveSide(endpoint: ConnectionEndpoint, otherCenter: Point, pass: Pass): ResolvedEnd | null {
+  function resolveSide(
+    endpoint: ConnectionEndpoint,
+    otherCenter: Point,
+    pass: Pass,
+    role?: PortRole,
+  ): ResolvedEnd | null {
     const first = effectiveRef(endpoint)
     if (!first) return null
-    const primary = resolveEndpoint(first.blockId, first.portId, otherCenter, pass, first.proxied)
+    const primary = resolveEndpoint(first.blockId, first.portId, otherCenter, pass, first.proxied, role)
     const fallbacks = endpoint.fallback
     if (!fallbacks || fallbacks.length === 0 || (primary && !primary.clipped)) return primary
 
@@ -855,7 +978,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       const ref = typeof candidate === 'string' ? { blockId: candidate } : candidate
       if (ref.blockId === first.blockId && ref.portId === first.portId) continue
       if (!blocks.has(ref.blockId)) continue
-      const resolved = resolveEndpoint(ref.blockId, ref.portId, otherCenter, pass, true)
+      const resolved = resolveEndpoint(ref.blockId, ref.portId, otherCenter, pass, true, role)
       if (!resolved) continue
       if (!resolved.clipped) return resolved
       best ??= resolved
@@ -937,6 +1060,44 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     }
   }
 
+  function syncHoverAttributes() {
+    const wanted = new Map<HTMLElement, string>()
+    if (hoverAttributesOn()) {
+      for (const blockId of hoveredLineBlocks) {
+        const el = blocks.get(blockId)?.el
+        if (el) wanted.set(el, 'line')
+      }
+      const pointerEl = hoveredBlockId ? blocks.get(hoveredBlockId)?.el : undefined
+      if (pointerEl) wanted.set(pointerEl, 'pointer')
+    }
+    for (const [el] of [...hoverAttributed]) {
+      if (!wanted.has(el)) {
+        el.removeAttribute('data-vl-hover')
+        hoverAttributed.delete(el)
+      }
+    }
+    for (const [el, value] of wanted) {
+      if (hoverAttributed.get(el) === value) continue
+      hoverAttributed.set(el, value)
+      el.setAttribute('data-vl-hover', value)
+    }
+  }
+
+  function syncProxyCounts(counts: Map<string, number>) {
+    const next = new Map<HTMLElement, number>()
+    for (const [blockId, count] of counts) {
+      const el = blocks.get(blockId)?.el
+      if (el) next.set(el, count)
+    }
+    for (const [el] of proxyCountEls) {
+      if (!next.has(el)) el.removeAttribute('data-vl-proxy-count')
+    }
+    for (const [el, count] of next) {
+      if (proxyCountEls.get(el) !== count) el.setAttribute('data-vl-proxy-count', String(count))
+    }
+    proxyCountEls = next
+  }
+
   function setBlockList(next: BlockDescriptor[], force = false) {
     const previous = new Map(blocks)
     blocks.clear()
@@ -983,7 +1144,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
   function viewOf(connection: ConnectionDescriptor): ConnectionStyle {
     const cached = viewCache.get(connection)
     if (cached && cached.lines === config.lines) return cached.view
-    const view = resolveLines(config.lines, connection.style)
+    const view = resolveLines(config.lines, connection.style, connection.kind)
     viewCache.set(connection, { lines: config.lines, view })
     return view
   }
@@ -1008,11 +1169,16 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
 
   function styleKeyOf(connection: ConnectionDescriptor): string | undefined {
     const style = connection.style
-    if (!style) return undefined
-    if (styleKeys.has(style)) return styleKeys.get(style)
-    const key = signatureOf(style)
-    styleKeys.set(style, key)
-    return key
+    let base: string | undefined
+    if (style) {
+      if (styleKeys.has(style)) base = styleKeys.get(style)
+      else {
+        base = signatureOf(style)
+        styleKeys.set(style, base)
+      }
+    }
+    if (connection.kind === undefined) return base
+    return `${connection.kind}|${base ?? ''}`
   }
 
   function newPass(): Pass {
@@ -1053,39 +1219,127 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     }
   }
 
-  function computeHandles(pass: Pass) {
+  function computeDeclared(pass: Pass) {
     handleInfos = []
-    if (!connectEnabled()) return
+    declaredPorts = []
+    if (!connectEnabled() && showMode() !== 'all') return
     const { containerRect, measure } = pass
     const middle = { x: containerRect.width / 2, y: containerRect.height / 2 }
     for (const block of blocks.values()) {
       for (const port of block.ports ?? []) {
         const role = port.connect === undefined ? blockRoleOf(block) : port.connect
         if (role === false) continue
-        const resolved = resolveEndpoint(block.id, port.id, middle, pass, false)
+        const sideRole: PortRole | undefined = role === 'source' || role === 'target' ? role : undefined
+        const resolved = resolveEndpoint(block.id, port.id, middle, pass, false, sideRole)
         const el = portElement(block, port)
-        if (!resolved) {
+        const handleKey = `${block.id}:${port.id}`
+        const point = resolved ? resolved.point : toLocal(centerOfRect(measure(el)), containerRect)
+        const side = resolved ? resolved.side : VLFixedSideEnum.RIGHT
+        const hidden = !resolved || Boolean(resolved.clipped)
+        const fade = resolved?.fade ?? 1
+        declaredPorts.push({
+          block,
+          port,
+          role,
+          el,
+          handleKey,
+          portKey: resolved ? endpointKey(block.id, resolved.point) : null,
+          point: resolved ? resolved.point : null,
+          side,
+          hidden,
+          fade,
+        })
+        if (connectEnabled()) {
           handleInfos.push({
-            key: `${block.id}:${port.id}`,
+            key: handleKey,
             endpoint: { blockId: block.id, portId: port.id },
             role,
-            point: toLocal(centerOfRect(measure(el)), containerRect),
-            side: VLFixedSideEnum.RIGHT,
+            point,
+            side,
             el,
-            hidden: true,
+            hidden,
+            fade,
           })
-          continue
         }
-        handleInfos.push({
-          key: `${block.id}:${port.id}`,
-          endpoint: { blockId: block.id, portId: port.id },
-          role,
-          point: resolved.point,
-          side: resolved.side,
-          el,
-          hidden: Boolean(resolved.clipped),
-        })
       }
+    }
+  }
+
+  function applyEndGaps(items: Resolved[]) {
+    const portsConfig = config.ports
+    const clearance =
+      portsConfig?.clearance === 'auto'
+        ? (portsConfig.radius ?? DEFAULT_PORT_RADIUS) + (portsConfig.strokeWidth ?? DEFAULT_PORT_STROKE_WIDTH)
+        : (portsConfig?.clearance ?? 0)
+    for (const item of items) {
+      const setting = item.view.endGap
+      for (const [end, name] of [
+        [item.from, 'start'],
+        [item.to, 'end'],
+      ] as const) {
+        const own = typeof setting === 'number' ? setting : (setting?.[name] ?? 0)
+        const total = own + clearance
+        if (total <= 0 || end.clipped) continue
+        const normal = sideNormal(end.side)
+        end.anchor = end.point
+        end.point = { x: end.point.x + normal.x * total, y: end.point.y + normal.y * total }
+      }
+    }
+  }
+
+  function refreshPortStates() {
+    if (!connectEnabled() && showMode() !== 'all') return
+    lastPortInputs = lastPortInputs.map((input) => ({ ...input, state: portStateOf(input.key) }))
+    svg.syncPorts(lastPortInputs)
+    emit('layout', { connections: lastLayoutConnections, ports: decoratePorts(lastPortBase) })
+  }
+
+  let portHandleKeys = new Map<string, string>()
+
+  function portStateOf(portKey: string): ConnectPortState | null {
+    const handleKey = portHandleKeys.get(portKey)
+    return handleKey ? (handleStates.get(handleKey) ?? null) : null
+  }
+
+  function decoratePorts(base: PortLayout[]): PortLayout[] {
+    const extended = connectEnabled() || showMode() === 'all'
+    return base.map((entry) => {
+      if (!extended) return entry
+      const handleKey = entry.portId !== undefined ? `${entry.blockId}:${entry.portId}` : undefined
+      return {
+        ...entry,
+        state: (handleKey ? handleStates.get(handleKey) : undefined) ?? 'idle',
+        hovered: hoveredBlockId === entry.blockId,
+      }
+    })
+  }
+
+  function syncDomPorts() {
+    const wanted = new Map<HTMLElement, DeclaredPort>()
+    if (connectEnabled() && domPorts()) for (const declared of declaredPorts) wanted.set(declared.el, declared)
+    for (const [el, cleanup] of [...domPortCleanups]) {
+      if (!wanted.has(el)) {
+        cleanup()
+        domPortCleanups.delete(el)
+      }
+    }
+    for (const [el, declared] of wanted) {
+      if (domPortCleanups.has(el)) continue
+      const key = declared.handleKey
+      const onDown = (event: PointerEvent) => {
+        const handle = handleByKey(key)
+        if (handle) connect.handlePointerDown(handle, event)
+      }
+      const onClick = (event: MouseEvent) => {
+        const handle = handleByKey(key)
+        if (handle) connect.handleClick(handle, event)
+      }
+      el.addEventListener('pointerdown', onDown)
+      el.addEventListener('click', onClick)
+      domPortCleanups.set(el, () => {
+        el.removeEventListener('pointerdown', onDown)
+        el.removeEventListener('click', onClick)
+      })
     }
   }
 
@@ -1109,8 +1363,8 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       const fromCenter = centerOf(fromBlock.el, pass)
       const toCenter = centerOf(toBlock.el, pass)
 
-      const from = resolveSide(connection.from, toCenter, pass)
-      const to = resolveSide(connection.to, fromCenter, pass)
+      const from = resolveSide(connection.from, toCenter, pass, 'source')
+      const to = resolveSide(connection.to, fromCenter, pass, 'target')
       if (!from || !to) continue
 
       const view = viewOf(connection)
@@ -1120,6 +1374,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     // Pass 1b: spread ports — runs before branching, which then treats each
     // virtual port as its own group (no shared trunk between spread lines).
     applyPortSpread(resolved)
+    applyEndGaps(resolved)
 
     // Pass 2: group 'smoothstep' connections by shared (block, port, side) on
     // each end and pick every group's branch point — see computeBranchInfo.
@@ -1160,7 +1415,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       return blockRects
     }
 
-    computeHandles(pass)
+    computeDeclared(pass)
     lastBlockRects = new Map()
     if (connectEnabled() && (config.interaction?.connect?.to ?? 'port') !== 'port') {
       for (const { id, rect } of allBlockRects()) lastBlockRects.set(id, rect)
@@ -1396,6 +1651,39 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     const paths: SvgPathInput[] = []
     const portLayouts: PortLayout[] = []
     const portConnections = new Map<string, string[]>()
+    const portEnds = new Map<string, ('start' | 'end')[]>()
+    const portRoleSets = new Map<string, Set<'source' | 'target'>>()
+    const portFades = new Map<string, number>()
+    const proxyCounts = new Map<string, number>()
+    const overlapShifts = new Map<string, Point>()
+    {
+      const groups = new Map<string, Resolved[]>()
+      for (const item of drawable) {
+        if (item.view.overlap !== 'offset' || item.curve === VLConnectionCurveEnum.SMOOTHSTEP) continue
+        const key = [
+          item.curve,
+          item.from.point.x,
+          item.from.point.y,
+          item.from.side,
+          item.to.point.x,
+          item.to.point.y,
+          item.to.side,
+        ].join('|')
+        const group = groups.get(key)
+        if (group) group.push(item)
+        else groups.set(key, [item])
+      }
+      for (const group of groups.values()) {
+        group.forEach((item, index) => {
+          if (index === 0) return
+          const step = 3 * Math.ceil(index / 2) * (index % 2 ? 1 : -1)
+          const dx = item.to.point.x - item.from.point.x
+          const dy = item.to.point.y - item.from.point.y
+          const length = Math.hypot(dx, dy) || 1
+          overlapShifts.set(item.connection.id, { x: (-dy / length) * step, y: (dx / length) * step })
+        })
+      }
+    }
     const connectionLayouts: ConnectionLayout[] = []
     const labelInputs: SvgLabelInput[] = []
     const liveIds = new Set<string>()
@@ -1405,16 +1693,19 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       liveIds.add(connection.id)
       const smooth = smoothResults.get(connection.id)
       const wantsLabels = Boolean(connection.labels?.length)
+      const shift = overlapShifts.get(connection.id)
+      const fromPoint = shift ? { x: from.point.x + shift.x, y: from.point.y + shift.y } : from.point
+      const toPoint = shift ? { x: to.point.x + shift.x, y: to.point.y + shift.y } : to.point
       const sig =
         curve === VLConnectionCurveEnum.SMOOTHSTEP
           ? [curve, smooth!.d, labelsKey(connection.labels), from.clipped ? 1 : 0, to.clipped ? 1 : 0].join('|')
           : [
               curve,
-              from.point.x,
-              from.point.y,
+              fromPoint.x,
+              fromPoint.y,
               from.side,
-              to.point.x,
-              to.point.y,
+              toPoint.x,
+              toPoint.y,
               to.side,
               curve === VLConnectionCurveEnum.STRAIGHT ? '' : geometryKey(view),
               labelsKey(connection.labels),
@@ -1433,10 +1724,10 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
         // The path as a polyline, for placing labels along it (built only when needed).
         let polyline: Point[] | null = null
         if (curve === VLConnectionCurveEnum.STRAIGHT) {
-          d = straightPath(from.point, to.point)
-          mid = { x: (from.point.x + to.point.x) / 2, y: (from.point.y + to.point.y) / 2 }
-          fromAngle = toAngle = angleDeg({ x: to.point.x - from.point.x, y: to.point.y - from.point.y })
-          if (wantsLabels) polyline = [from.point, to.point]
+          d = straightPath(fromPoint, toPoint)
+          mid = { x: (fromPoint.x + toPoint.x) / 2, y: (fromPoint.y + toPoint.y) / 2 }
+          fromAngle = toAngle = angleDeg({ x: toPoint.x - fromPoint.x, y: toPoint.y - fromPoint.y })
+          if (wantsLabels) polyline = [fromPoint, toPoint]
         } else if (curve === VLConnectionCurveEnum.SMOOTHSTEP) {
           d = smooth!.d
           const points = smooth!.points
@@ -1445,10 +1736,10 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           polyline = points
         } else {
           const geometry = resolveCurveGeometry(view)
-          d = bezierPath(from.point, from.side, to.point, to.side, geometry)
-          mid = bezierMidpoint(from.point, from.side, to.point, to.side, geometry)
-          ;({ fromAngle, toAngle } = bezierTangentAngles(from.point, from.side, to.point, to.side, geometry))
-          if (wantsLabels) polyline = bezierPolyline(from.point, from.side, to.point, to.side, geometry)
+          d = bezierPath(fromPoint, from.side, toPoint, to.side, geometry)
+          mid = bezierMidpoint(fromPoint, from.side, toPoint, to.side, geometry)
+          ;({ fromAngle, toAngle } = bezierTangentAngles(fromPoint, from.side, toPoint, to.side, geometry))
+          if (wantsLabels) polyline = bezierPolyline(fromPoint, from.side, toPoint, to.side, geometry)
         }
         const labels: LabelLayout[] = polyline
           ? (connection.labels ?? []).map((label) => layoutLabel(label, polyline))
@@ -1476,8 +1767,8 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           labelInputs: inputs,
           layout: {
             id: connection.id,
-            from: from.point,
-            to: to.point,
+            from: anchorOf(from),
+            to: anchorOf(to),
             mid,
             fromAngle,
             toAngle,
@@ -1491,14 +1782,20 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       }
 
       if (from.proxied || to.proxied) proxiedCount++
+      for (const end of [from, to]) {
+        if (end.proxied) proxyCounts.set(end.blockId, (proxyCounts.get(end.blockId) ?? 0) + 1)
+      }
       paths.push({
         id: connection.id,
         d: entry.d,
         style: connection.style,
         styleKey: styleKeyOf(connection),
         proxied: from.proxied || to.proxied,
-        fromKey: endpointKey(from.blockId, from.point),
-        toKey: endpointKey(to.blockId, to.point),
+        ...(connection.kind !== undefined ? { kind: connection.kind } : {}),
+        ...(from.proxied ? { proxiedStart: true } : {}),
+        ...(to.proxied ? { proxiedEnd: true } : {}),
+        fromKey: endpointKey(from.blockId, anchorOf(from)),
+        toKey: endpointKey(to.blockId, anchorOf(to)),
         fromClipped: from.clipped,
         toClipped: to.clipped,
         hoverable: connection.hoverable,
@@ -1510,9 +1807,14 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
       // Computed unconditionally (not gated by showPorts) so a `#port` slot
       // consumer can render custom content even with the built-in dot off.
       // A pinned (clipped) end is not a real port position, so it gets no dot either.
-      for (const [end, hasExplicitMarker] of [
-        [from, mergeMarkerInputs(config.markers?.start, connection.style?.markers?.start) !== undefined],
-        [to, mergeMarkerInputs(config.markers?.end, connection.style?.markers?.end) !== undefined],
+      for (const [end, hasExplicitMarker, endName, endRole] of [
+        [
+          from,
+          mergeMarkerInputs(config.markers?.start, connection.style?.markers?.start) !== undefined,
+          'start',
+          'source',
+        ],
+        [to, mergeMarkerInputs(config.markers?.end, connection.style?.markers?.end) !== undefined, 'end', 'target'],
       ] as const) {
         // An explicit start/endMarker replaces the generic dot (and any
         // `#port` slot content) for that endpoint rather than layering under
@@ -1521,34 +1823,105 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
         // counts as "explicit" too, even though it renders no native marker
         // either — it's the escape hatch for a Vue `#marker` slot to have a
         // bare point with nothing else drawn on top of or under it.
-        if (hasExplicitMarker || end.clipped) continue
+        if ((hasExplicitMarker && config.ports?.sync !== 'marker') || end.clipped) continue
         // Keyed by the resolved physical point rather than the logical port id:
         // an 'auto'-side port can resolve to a different side per connection
         // (e.g. one target below, another far to the right), and each distinct
         // point earns its own marker — only truly-coincident points collapse.
-        const key = endpointKey(end.blockId, end.point)
+        const key = endpointKey(end.blockId, anchorOf(end))
         const sharing = portConnections.get(key)
         if (sharing) {
           sharing.push(connection.id)
+          portEnds.get(key)!.push(endName)
+          portRoleSets.get(key)!.add(endRole)
           continue
         }
         portConnections.set(key, [connection.id])
-        portLayouts.push({ key, blockId: end.blockId, portId: end.portId, point: end.point })
+        portEnds.set(key, [endName])
+        portRoleSets.set(key, new Set([endRole]))
+        portFades.set(key, end.fade ?? 1)
+        portLayouts.push({ key, blockId: end.blockId, portId: end.portId, point: anchorOf(end) })
       }
     }
     for (const id of built.keys()) if (!liveIds.has(id)) built.delete(id)
 
-    const portInputs: SvgPortInput[] = showPorts()
-      ? portLayouts.map((port) => ({
-          key: port.key,
-          point: port.point,
-          connectionIds: portConnections.get(port.key) ?? [],
-        }))
+    const declaredByHandle = new Map<string, DeclaredPort>()
+    for (const declared of declaredPorts) declaredByHandle.set(declared.handleKey, declared)
+    const connectedHandles = new Set<string>()
+    for (const entry of portLayouts) {
+      const count = portConnections.get(entry.key)!.length
+      const declared = entry.portId !== undefined ? declaredByHandle.get(`${entry.blockId}:${entry.portId}`) : undefined
+      if (declared) connectedHandles.add(declared.handleKey)
+      const roles = portRoleSets.get(entry.key)
+      const role: ConnectPortRole | undefined =
+        declared && declared.role !== 'both'
+          ? declared.role
+          : roles && roles.size === 1
+            ? [...roles][0]
+            : declared?.role
+      entry.connected = count
+      if (role) entry.role = role
+    }
+    if (showMode() === 'all') {
+      for (const declared of declaredPorts) {
+        if (!declared.point || declared.hidden || connectedHandles.has(declared.handleKey)) continue
+        const key = declared.portKey!
+        portFades.set(key, declared.fade)
+        portLayouts.push({
+          key,
+          blockId: declared.block.id,
+          portId: declared.port.id,
+          point: declared.point,
+          role: declared.role,
+          connected: 0,
+        })
+      }
+    }
+    portHandleKeys = new Map()
+    for (const entry of portLayouts) {
+      if (entry.portId !== undefined) portHandleKeys.set(entry.key, `${entry.blockId}:${entry.portId}`)
+    }
+    const portsConfig = config.ports
+    const extendedPorts = Boolean(
+      connectEnabled() || showMode() === 'all' || portsConfig?.source || portsConfig?.target || portsConfig?.connected,
+    )
+    const drawPorts = showMode() !== 'none' && !domPorts()
+    const portInputs: SvgPortInput[] = drawPorts
+      ? portLayouts
+          .filter((entry) => showMode() === 'all' || (entry.connected ?? 0) > 0)
+          .map((entry) => {
+            const declared =
+              entry.portId !== undefined ? declaredByHandle.get(`${entry.blockId}:${entry.portId}`) : undefined
+            const fade = portFades.get(entry.key) ?? 1
+            return {
+              key: entry.key,
+              point: entry.point,
+              connectionIds: portConnections.get(entry.key) ?? [],
+              ends: portEnds.get(entry.key) ?? [],
+              ...(extendedPorts && entry.role ? { role: entry.role } : {}),
+              ...(extendedPorts && entry.connected ? { connected: entry.connected } : {}),
+              state: portStateOf(entry.key),
+              ...(declared?.port.className ? { className: declared.port.className } : {}),
+              ...(declared?.port.style ? { style: declared.port.style } : {}),
+              ...(fade < 1 ? { opacity: fade } : {}),
+            }
+          })
       : []
+    coveredPortKeys = new Set(
+      portInputs.flatMap((input) => {
+        const handleKey = portHandleKeys.get(input.key)
+        return handleKey ? [handleKey] : []
+      }),
+    )
+    lastPortInputs = portInputs
+    lastPortBase = portLayouts
+    lastLayoutConnections = connectionLayouts
     svg.resize(containerRect.width, containerRect.height)
     stats.rendered = svg.update(paths, portInputs, labelInputs)
     syncHandles()
     connect.refresh()
+    syncDomPorts()
+    syncProxyCounts(proxyCounts)
 
     stats.blocks = blocks.size
     stats.connections = connections.size
@@ -1559,7 +1932,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     if (renderTimes.length > RENDER_WINDOW) renderTimes.shift()
     stats.medianRenderMs = median(renderTimes)
     stats.observedElements = watcher.size()
-    emit('layout', { connections: connectionLayouts, ports: portLayouts })
+    emit('layout', { connections: connectionLayouts, ports: decoratePorts(portLayouts) })
   }
 
   function requestRender() {

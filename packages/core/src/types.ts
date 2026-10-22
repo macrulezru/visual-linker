@@ -10,6 +10,8 @@ export interface PortDescriptor {
   id: string
   connect?: ConnectRole
   ariaLabel?: string
+  style?: PortStyle
+  className?: string
   target?: string | HTMLElement
   side?: PortSide | FixedSide[]
   offset?: number
@@ -75,6 +77,7 @@ export interface MarkerStyle {
   strokeWidth?: number
   opacity?: number
   className?: string
+  units?: 'stroke' | 'px'
   svg?: string
   orient?: `${VLOrientEnum.AUTO | VLOrientEnum.FIXED}`
   arrow?: boolean | MarkerArrowConfig
@@ -134,8 +137,20 @@ export interface RoutingConfig {
   padding?: number
 }
 
+export interface LineEndGap {
+  start?: number
+  end?: number
+}
+
+export interface ProxiedEnds {
+  start?: MarkerInput
+  end?: MarkerInput
+}
+
 export interface LineOptions {
   curve?: ConnectionCurve
+  endGap?: number | LineEndGap
+  overlap?: 'stack' | 'offset'
   animated?: boolean | ConnectionFlow
   bezier?: BezierConfig
   smoothstep?: SmoothstepConfig
@@ -143,7 +158,10 @@ export interface LineOptions {
   jumps?: JumpsOption
 }
 
-export type LinesConfig = Stateful<LineStyle> & LineOptions
+export type LinesConfig = Omit<Stateful<LineStyle>, 'proxied'> & {
+  proxied?: Partial<LineStyle> & ProxiedEnds
+  kinds?: Record<string, ConnectionStyle>
+} & LineOptions
 
 export interface ConnectionMarkers {
   start?: MarkerInput
@@ -166,9 +184,20 @@ export type ConnectPortState = 'source' | 'candidate' | 'invalid' | 'target'
 
 export type ConnectPortStates = { [K in ConnectPortState]?: PortStyle }
 
+export type PortRole = 'source' | 'target'
+
 export type PortsConfig = Stateful<PortStyle> & {
   connect?: ConnectPortStates
-  show?: boolean
+  source?: Stateful<PortStyle>
+  target?: Stateful<PortStyle>
+  connected?: PortStyle
+  show?: boolean | 'connected' | 'all'
+  render?: 'svg' | 'dom'
+  clearance?: number | 'auto'
+  fadeEdge?: number
+  slotPointerEvents?: boolean
+  sync?: 'marker'
+  sides?: { source?: PortSide | FixedSide[]; target?: PortSide | FixedSide[] }
   side?: PortSide | FixedSide[]
   offset?: number
   spread?: PortSpread
@@ -198,6 +227,7 @@ export type ConnectMode = 'drag' | 'click' | 'both'
 export type ConnectOrigin = 'port' | 'block' | 'both'
 export type ConnectHandleVisibility = 'hover' | 'always' | 'never'
 export type ConnectVia = 'drag' | 'click' | 'keyboard'
+export type ConnectPortRole = 'source' | 'target' | 'both'
 export type ConnectCancelReason = 'escape' | 'no-target' | 'invalid' | 'pointer-cancel' | 'api'
 
 export interface ConnectMessageContext {
@@ -226,6 +256,8 @@ export interface ConnectConfig {
   allowSelf?: boolean
   allowDuplicates?: boolean
   autoScroll?: boolean
+  ignore?: string | false
+  dimOthers?: boolean | number
   preview?: Stateful<LineStyle> & LineOptions
   announce?: ConnectMessages
   validate?: (from: ConnectionEndpoint, to: ConnectionEndpoint) => boolean | string
@@ -304,6 +336,7 @@ export interface LabelLayout {
 
 export interface ConnectionDescriptor {
   id: string
+  kind?: string
   from: ConnectionEndpoint
   to: ConnectionEndpoint
   style?: ConnectionStyle
@@ -330,21 +363,26 @@ export interface PortLayout {
   blockId: string
   portId?: string
   point: Point
+  role?: ConnectPortRole
+  connected?: number
+  state?: 'idle' | ConnectPortState
+  hovered?: boolean
 }
 
 export interface VisualLinkerEventMap {
   'block:dragstart': { blockId: string }
   'block:drag': { blockId: string; x: number; y: number }
   'block:dragend': { blockId: string; x: number; y: number }
-  'block:mouseenter': { blockId: string }
-  'block:mouseleave': { blockId: string }
+  'block:mouseenter': { blockId: string; via?: 'pointer' | 'line' }
+  'block:mouseleave': { blockId: string; via?: 'pointer' | 'line' }
   'connection:click': { connection: ConnectionDescriptor }
   'connection:mouseenter': { connection: ConnectionDescriptor }
   'connection:mouseleave': { connection: ConnectionDescriptor }
   'connection:selectionchange': { selectedIds: string[] }
   'connection:delete-request': { connections: ConnectionDescriptor[] }
   layout: { connections: ConnectionLayout[]; ports: PortLayout[] }
-  'connect:start': { from: ConnectionEndpoint }
+  'connect:start': { from: ConnectionEndpoint; via: ConnectVia | 'api' }
+  'connect:candidate': { from: ConnectionEndpoint; candidate: ConnectionEndpoint | null; valid: boolean }
   'connection:create-request': {
     from: ConnectionEndpoint
     to: ConnectionEndpoint

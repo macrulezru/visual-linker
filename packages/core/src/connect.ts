@@ -27,6 +27,8 @@ export interface HandleInfo {
   side: FixedSide
   el: HTMLElement
   hidden?: boolean
+  portKey?: string
+  fade?: number
 }
 
 export interface BlockGeometry {
@@ -48,12 +50,14 @@ export interface ConnectHost {
   blockAt(clientX: number, clientY: number): string | undefined
   toLocal(clientX: number, clientY: number): Point
   blockGeometry(blockId: string, towards: Point): BlockGeometry | null
+  ignored(target: Element): boolean
+  setDim(value: number | null): void
   previewPath(from: BlockGeometry, toPoint: Point, toSide: FixedSide | null): string
   setStates(states: Map<string, ConnectPortState>): void
   setPreview(d: string | null, validity: 'valid' | 'invalid' | null): void
   stylePreview(): void
   announce(text: string): void
-  emit<E extends 'connect:start' | 'connection:create-request' | 'connection:create-cancel'>(
+  emit<E extends 'connect:start' | 'connect:candidate' | 'connection:create-request' | 'connection:create-cancel'>(
     event: E,
     payload: VisualLinkerEventMap[E],
   ): void
@@ -73,6 +77,7 @@ interface Session {
   cleanups: (() => void)[]
   validity: Map<string, { valid: boolean; message?: string }>
   attributed: Map<HTMLElement, string | null>
+  pressed: Map<HTMLElement, string | null>
   keyboardFocus: HTMLElement | null
   scrollFrame: number | null
   ignoreNextClick: boolean
@@ -238,10 +243,32 @@ export function createConnectController(host: ConnectHost) {
       const el = elementOf(s.candidate.endpoint)
       if (el) stateOfElement.set(el, s.candidate.valid ? 'target' : 'invalid')
     }
+    const rank: Record<ConnectPortState, number> = { source: 4, target: 3, invalid: 2, candidate: 1 }
+    const blockState = new Map<HTMLElement, ConnectPortState>()
+    const blockOf = (endpoint: ConnectionEndpoint) => host.blockElement(endpoint.blockId)
+    const raise = (el: HTMLElement | undefined, state: ConnectPortState) => {
+      if (!el) return
+      const current = blockState.get(el)
+      if (!current || rank[state] > rank[current]) blockState.set(el, state)
+    }
+    for (const handle of host.handles()) {
+      const state = stateOfElement.get(handle.el)
+      if (state) raise(blockOf(handle.endpoint), state)
+    }
+    raise(blockOf(s.from), 'source')
+    if (s.candidate) raise(blockOf(s.candidate.endpoint), s.candidate.valid ? 'target' : 'invalid')
+    for (const [el, state] of blockState) {
+      const own = stateOfElement.get(el)
+      if (!own || rank[state] > rank[own]) stateOfElement.set(el, state)
+    }
     for (const el of [...s.attributed.keys()]) {
       if (!stateOfElement.has(el)) setAttribute(s, el, null)
     }
     for (const [el, state] of stateOfElement) setAttribute(s, el, state)
+    if (sourceEl && !s.pressed.has(sourceEl)) {
+      s.pressed.set(sourceEl, sourceEl.getAttribute('aria-pressed'))
+      sourceEl.setAttribute('aria-pressed', 'true')
+    }
     host.setStates(states)
   }
 
@@ -282,6 +309,11 @@ export function createConnectController(host: ConnectHost) {
     const changed = endpointOrNull(previous) !== endpointOrNull(next) || previous?.valid !== next?.valid
     if (changed) {
       paintStates(s)
+      host.emit('connect:candidate', {
+        from: clean(s.from),
+        candidate: next ? clean(next.endpoint) : null,
+        valid: next ? next.valid : false,
+      })
       if (next) {
         if (next.valid) say('candidate', { from: s.from, to: next.endpoint })
         else say('invalid', { from: s.from, to: next.endpoint, message: next.message })
@@ -370,6 +402,12 @@ export function createConnectController(host: ConnectHost) {
       else el.setAttribute('data-vl-connect-state', original)
     }
     s.attributed.clear()
+    for (const [el, original] of s.pressed) {
+      if (original === null) el.removeAttribute('aria-pressed')
+      else el.setAttribute('aria-pressed', original)
+    }
+    s.pressed.clear()
+    host.setDim(null)
     host.container.removeAttribute('data-vl-connecting')
     host.setStates(new Map())
     host.setPreview(null, null)
@@ -512,18 +550,21 @@ export function createConnectController(host: ConnectHost) {
       cleanups: [],
       validity: new Map(),
       attributed: new Map(),
+      pressed: new Map(),
       keyboardFocus: null,
       scrollFrame: null,
       ignoreNextClick: false,
     }
     session = s
+    const dim = cfg()?.dimOthers
+    host.setDim(dim === true ? 0.35 : typeof dim === 'number' ? dim : null)
     host.container.setAttribute('data-vl-connecting', 'true')
     host.onStateChange(true)
     paintStates(s)
     if (via === 'keyboard') s.keyboardFocus = elementOf(origin) ?? null
     drawPreview(s)
     say('start', { from: origin })
-    host.emit('connect:start', { from: origin })
+    host.emit('connect:start', { from: origin, via })
     return true
   }
 
@@ -612,6 +653,7 @@ export function createConnectController(host: ConnectHost) {
       }
       lastModifiers = modifiersOf(event)
       const target = event.target instanceof Element ? event.target : null
+      if (target && !target.closest('[data-vl-handle]') && host.ignored(target)) return
       const group = target?.closest('[data-vl-handle]')
       const key = group?.getAttribute('data-vl-handle')
       const handle = key ? host.handles().find((candidate) => candidate.key === key) : undefined

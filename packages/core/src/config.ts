@@ -83,9 +83,14 @@ export function layered<T extends object>(config: Stateful<T> | undefined, activ
   return { ...baseOf(config), ...statesOf(config, active) }
 }
 
-export function resolveLines(config: LinesConfig | undefined, own: ConnectionStyle | undefined): ConnectionStyle {
-  if (!own) return config ?? {}
-  return mergeConfig<ConnectionStyle>(config, own)
+export function resolveLines(
+  config: LinesConfig | undefined,
+  own: ConnectionStyle | undefined,
+  kind?: string,
+): ConnectionStyle {
+  const kindStyle = kind ? config?.kinds?.[kind] : undefined
+  if (!own && !kindStyle) return config ?? {}
+  return mergeConfig<ConnectionStyle>(config, kindStyle, own)
 }
 
 export function normalizeMarker(input: MarkerInput | undefined): MarkerConfig | false | undefined {

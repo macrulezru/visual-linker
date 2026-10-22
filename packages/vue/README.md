@@ -237,6 +237,22 @@ Each slot is only built if actually used. `#marker` only renders for an
 endpoint with no marker configured (neither `config.markers` nor the connection's
 `style.markers`), and not for an end pinned to a scroller's edge — an explicit marker still wins.
 
+The `#port` slot is rendered for every connectable port (with `ports.show: 'all'`, connected or not) and receives
+`{ blockId, portId, point, role, connected, state, hovered }`; `ports.slotPointerEvents: false` makes its content ignore
+the pointer.
+
+#### `useVisualLinkerConnect(linker)`
+
+```ts
+import { useVisualLinkerConnect } from '@macrulez/visual-linker-vue'
+
+const linker = ref(null) // template ref of <VisualLinker>, its engine, or an engine
+const { connecting, from, candidate, via } = useVisualLinkerConnect(linker)
+```
+
+The connect gesture as refs: `connecting`, the endpoint it `from`, the `candidate` under the pointer and how it started
+(`via`: `'drag'`, `'click'`, `'keyboard'`, `'api'`). They reset when the request or the cancel arrives.
+
 #### `useVisualLinker(container, options?)`
 
 ```vue

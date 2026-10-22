@@ -22,6 +22,7 @@ const visualLinkerModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOpt
 
     addComponent({ name: 'VisualLinker', export: 'VisualLinker', filePath: '@macrulez/visual-linker-vue' })
     addImports({ name: 'useVisualLinker', from: '@macrulez/visual-linker-vue' })
+    addImports({ name: 'useVisualLinkerConnect', from: '@macrulez/visual-linker-vue' })
 
     const connect = (options as { interaction?: { connect?: { validate?: unknown } } } | undefined)?.interaction
       ?.connect
