@@ -1,6 +1,7 @@
 import { toValue } from 'vue'
 import type {
   BlockDescriptor,
+  ConnectRole,
   DragBounds,
   FixedSide,
   PortDescriptor,
@@ -32,6 +33,7 @@ export const VL_ATTR = {
   anchor: 'data-vl-anchor',
   portSpread: 'data-vl-port-spread',
   spread: 'data-vl-spread',
+  connect: 'data-vl-connect',
 } as const
 
 export const OBSERVED_ATTRS = Object.values(VL_ATTR).filter((attr) => attr !== VL_ATTR.root)
@@ -58,6 +60,7 @@ export interface VisualLinkerBlock {
   dragBounds?: RefFriendlyDragBounds
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
+  connect?: ConnectRole
 }
 
 export interface BlockDirectiveOptions {
@@ -71,6 +74,7 @@ export interface BlockDirectiveOptions {
   dragBounds?: RefFriendlyDragBounds
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
+  connect?: ConnectRole
 }
 /** `v-vl-block="'id'"` or `v-vl-block="{ id, ...options }"`. */
 export type BlockDirectiveValue = string | BlockDirectiveOptions
@@ -89,16 +93,22 @@ export type PortDirectiveValue = string | PortDirectiveOptions
 export const blockDirectiveOptions = new WeakMap<Element, BlockDirectiveOptions>()
 export const portDirectiveOptions = new WeakMap<Element, PortDirectiveOptions>()
 
-const liveScopes = new Set<() => void>()
+export interface ScopeChange {
+  el: HTMLElement
+  kind: 'block' | 'port'
+  op: 'update' | 'remove'
+}
+
+const liveScopes = new Set<(change?: ScopeChange) => void>()
 
 /** Registers a `<VisualLinker>`'s rescan trigger, so directive config changes that touch no attribute still reach it. */
-export function registerScope(schedule: () => void): () => void {
+export function registerScope(schedule: (change?: ScopeChange) => void): () => void {
   liveScopes.add(schedule)
   return () => liveScopes.delete(schedule)
 }
 
-export function notifyScopes() {
-  for (const schedule of liveScopes) schedule()
+export function notifyScopes(change?: ScopeChange) {
+  for (const schedule of liveScopes) schedule(change)
 }
 
 export interface DiscoveryScope {
@@ -127,6 +137,14 @@ const SIDES = new Set(['top', 'right', 'bottom', 'left', 'auto'])
 function parseBool(value: string | null): boolean | undefined {
   if (value === null) return undefined
   return value !== 'false'
+}
+
+function parseConnect(value: string | null): ConnectRole | undefined {
+  if (value === null) return undefined
+  const trimmed = value.trim()
+  if (trimmed === 'false') return false
+  if (trimmed === 'source' || trimmed === 'target' || trimmed === 'both') return trimmed
+  return undefined
 }
 
 function parseNumber(value: string | null): number | undefined {
@@ -160,7 +178,7 @@ function parseDragBounds(value: string | null): DragBounds | undefined {
   return document.querySelector<HTMLElement>(value) ?? undefined
 }
 
-function searchRoot(scope: DiscoveryScope): ParentNode {
+export function searchRoot(scope: DiscoveryScope): ParentNode {
   return scope.page ? document : scope.root
 }
 
@@ -169,7 +187,7 @@ function resolveBlockElement(value: RefFriendlyElement, scope: DiscoveryScope): 
   return toValue(value) ?? undefined
 }
 
-function closestBlock(el: Element, blocksByEl: Map<Element, BlockDescriptor>): BlockDescriptor | undefined {
+export function closestBlock(el: Element, blocksByEl: Map<Element, BlockDescriptor>): BlockDescriptor | undefined {
   for (let node: Element | null = el; node; node = node.parentElement) {
     const block = blocksByEl.get(node)
     if (block) return block
@@ -177,7 +195,7 @@ function closestBlock(el: Element, blocksByEl: Map<Element, BlockDescriptor>): B
   return undefined
 }
 
-function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
+export function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
   const directive = blockDirectiveOptions.get(el)
   return {
     id,
@@ -193,10 +211,11 @@ function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
         ? resolveDragBoundsForCore(directive.dragBounds)
         : parseDragBounds(el.getAttribute(VL_ATTR.dragBounds)),
     portSpread: directive?.portSpread ?? parseSpread(el.getAttribute(VL_ATTR.portSpread)),
+    connect: directive?.connect ?? parseConnect(el.getAttribute(VL_ATTR.connect)),
   }
 }
 
-function discoverPort(el: HTMLElement, id: string): PortDescriptor {
+export function discoverPort(el: HTMLElement, id: string): PortDescriptor {
   const fromAttributes: PortDescriptor = {
     id,
     target: el,
@@ -204,6 +223,7 @@ function discoverPort(el: HTMLElement, id: string): PortDescriptor {
     offset: parseNumber(el.getAttribute(VL_ATTR.offset)),
     anchorBlockId: el.getAttribute(VL_ATTR.anchor) ?? undefined,
     spread: parseSpread(el.getAttribute(VL_ATTR.spread)),
+    connect: parseConnect(el.getAttribute(VL_ATTR.connect)),
   }
   const directive = portDirectiveOptions.get(el)
   if (!directive) return fromAttributes
@@ -214,6 +234,26 @@ function discoverPort(el: HTMLElement, id: string): PortDescriptor {
     ...fromAttributes,
     ...Object.fromEntries(Object.entries(fromDirective).filter(([, value]) => value !== undefined)),
   } as PortDescriptor
+}
+
+export function mergeExplicit(
+  scope: DiscoveryScope,
+  block: VisualLinkerBlock,
+  discovered: BlockDescriptor | undefined,
+): BlockDescriptor | undefined {
+  const el = (block.el !== undefined ? resolveBlockElement(block.el, scope) : undefined) ?? discovered?.el
+  if (!el) return undefined
+  return {
+    id: block.id,
+    el,
+    ports: block.ports?.map(resolvePortForCore) ?? discovered?.ports,
+    draggable: block.draggable ?? discovered?.draggable,
+    highlightable: block.highlightable ?? discovered?.highlightable,
+    dragHandle: block.dragHandle !== undefined ? resolveElement(block.dragHandle) : discovered?.dragHandle,
+    dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
+    portSpread: block.portSpread ?? discovered?.portSpread,
+    connect: block.connect ?? discovered?.connect,
+  }
 }
 
 /**
@@ -234,19 +274,8 @@ export function collectBlocks(scope: DiscoveryScope, explicit: readonly VisualLi
   }
 
   for (const block of explicit) {
-    const discovered = byId.get(block.id)
-    const el = (block.el !== undefined ? resolveBlockElement(block.el, scope) : undefined) ?? discovered?.el
-    if (!el) continue
-    byId.set(block.id, {
-      id: block.id,
-      el,
-      ports: block.ports?.map(resolvePortForCore) ?? discovered?.ports,
-      draggable: block.draggable ?? discovered?.draggable,
-      highlightable: block.highlightable ?? discovered?.highlightable,
-      dragHandle: block.dragHandle !== undefined ? resolveElement(block.dragHandle) : discovered?.dragHandle,
-      dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
-      portSpread: block.portSpread ?? discovered?.portSpread,
-    })
+    const merged = mergeExplicit(scope, block, byId.get(block.id))
+    if (merged) byId.set(block.id, merged)
   }
 
   const blocksByEl = new Map<Element, BlockDescriptor>()
@@ -291,6 +320,8 @@ function samePorts(a: PortDescriptor[] = [], b: PortDescriptor[] = []): boolean 
       const other = b[i]!
       return (
         port.id === other.id &&
+        port.connect === other.connect &&
+        port.ariaLabel === other.ariaLabel &&
         port.target === other.target &&
         sameSide(port.side, other.side) &&
         port.offset === other.offset &&
@@ -313,6 +344,7 @@ export function sameBlocks(a: readonly BlockDescriptor[], b: readonly BlockDescr
         block.el === other.el &&
         block.draggable === other.draggable &&
         block.highlightable === other.highlightable &&
+        block.connect === other.connect &&
         block.dragHandle === other.dragHandle &&
         sameBounds(block.dragBounds, other.dragBounds) &&
         sameSpread(block.portSpread, other.portSpread) &&

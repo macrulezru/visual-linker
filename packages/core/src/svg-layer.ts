@@ -1,4 +1,4 @@
-import type { ConnectionStyle, MarkerStyle, VisualLinkerConfig } from './types'
+import type { ConnectionEndpoint, ConnectionStyle, ConnectPortState, MarkerStyle, VisualLinkerConfig } from './types'
 import {
   baseOf,
   layered,
@@ -46,6 +46,17 @@ export interface SvgPathInput {
   fromClipped?: boolean
   toClipped?: boolean
   ariaLabel?: string
+  styleKey?: string
+  proxied?: boolean
+}
+
+export interface SvgHandleInput {
+  key: string
+  point: Point
+  endpoint: ConnectionEndpoint
+  radius: number
+  state: ConnectPortState | null
+  visible: boolean
 }
 
 export interface SvgLabelInput {
@@ -68,6 +79,8 @@ export interface SvgLayerHandlers {
   onConnectionEnter?: (id: string, event: PointerEvent) => void
   onConnectionLeave?: (id: string, event: PointerEvent) => void
   onConnectionKeydown?: (id: string, event: KeyboardEvent) => void
+  onHandlePointerDown?: (key: string, event: PointerEvent) => void
+  onHandleClick?: (key: string, event: MouseEvent) => void
 }
 
 const DEFAULT_STYLE = `
@@ -88,6 +101,20 @@ const DEFAULT_STYLE = `
   .vl-port { fill: var(--vl-port-fill, ${DEFAULT_PORT_FILL}); stroke: var(--vl-port-stroke-color, ${DEFAULT_PORT_STROKE_COLOR}); stroke-width: var(--vl-port-stroke-width, ${DEFAULT_PORT_STROKE_WIDTH}); r: var(--vl-port-radius, ${DEFAULT_PORT_RADIUS}); }
   .vl-draggable { cursor: grab; }
   .vl-dragging { cursor: grabbing; }
+`
+
+const CONNECT_STYLE = `
+  .vl-handle-hit { fill: transparent; stroke: none; pointer-events: all; cursor: crosshair; touch-action: none; }
+  .vl-handle { fill: var(--vl-port-fill, ${DEFAULT_PORT_FILL}); stroke: var(--vl-port-stroke-color, ${DEFAULT_PORT_STROKE_COLOR}); stroke-width: var(--vl-port-stroke-width, ${DEFAULT_PORT_STROKE_WIDTH}); r: var(--vl-port-radius, ${DEFAULT_PORT_RADIUS}); pointer-events: none; opacity: 0; }
+  .vl-handle--visible { opacity: 1; }
+  .vl-handle--source { stroke: var(--vl-connect-preview-color, ${DEFAULT_SELECTION_COLOR}); fill: var(--vl-connect-preview-color, ${DEFAULT_SELECTION_COLOR}); }
+  .vl-handle--candidate { stroke: var(--vl-connect-valid-color, ${DEFAULT_LINE_COLOR}); }
+  .vl-handle--target { stroke: var(--vl-connect-valid-color, ${DEFAULT_LINE_COLOR}); fill: var(--vl-connect-valid-color, ${DEFAULT_LINE_COLOR}); }
+  .vl-handle--invalid { stroke: var(--vl-connect-invalid-color, #d64545); }
+  .vl-connect-preview { fill: none; stroke: var(--vl-connect-preview-color, ${DEFAULT_SELECTION_COLOR}); stroke-width: var(--vl-line-width, ${DEFAULT_LINE_WIDTH}); stroke-dasharray: ${DASH_PATTERN}; opacity: 0.8; pointer-events: none; }
+  .vl-connect-preview--valid { stroke: var(--vl-connect-valid-color, ${DEFAULT_LINE_COLOR}); }
+  .vl-connect-preview--invalid { stroke: var(--vl-connect-invalid-color, #d64545); }
+  .vl-live { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
 `
 
 function measureText(text: SVGTextElement): { width: number; height: number } {
@@ -130,31 +157,68 @@ export function createSvgLayer(
 
   const defs = document.createElementNS(SVG_NS, 'defs')
   svg.appendChild(defs)
+  let connectStyle: SVGStyleElement | null = null
+  function ensureConnectStyle() {
+    if (connectStyle) return
+    connectStyle = document.createElementNS(SVG_NS, 'style')
+    connectStyle.textContent = CONNECT_STYLE
+    svg.insertBefore(connectStyle, style.nextSibling)
+  }
   const labelsLayer = document.createElementNS(SVG_NS, 'g')
   labelsLayer.setAttribute('class', 'vl-labels')
   svg.appendChild(labelsLayer)
   container.appendChild(svg)
+
+  let handlesLayer: SVGGElement | null = null
+  let previewPath: SVGPathElement | null = null
+  let liveRegion: HTMLElement | null = null
 
   const paths = new Map<string, SVGPathElement>()
   const hits = new Map<string, SVGPathElement>()
   const flows = new Map<string, SVGPathElement>()
   const labelEls = new Map<string, SVGGElement>()
   const labelInputs = new Map<string, SvgLabelInput>()
+  const labelKeys = new Map<string, string>()
   const ports = new Map<string, SVGCircleElement>()
   const portInputs = new Map<string, SvgPortInput>()
+  const portPaintKeys = new Map<string, string>()
   const markerDefs = new Map<string, SVGMarkerElement>()
   const styles = new Map<string, ConnectionStyle | undefined>()
+  const styleKeys = new Map<string, string | undefined>()
   const ariaLabels = new Map<string, string>()
   const hoverableFlags = new Map<string, boolean | undefined>()
   const endpointKeys = new Map<string, { from?: string; to?: string; fromClipped?: boolean; toClipped?: boolean }>()
+  const lastD = new Map<string, string>()
+  const appearanceKeys = new Map<string, string>()
+  const connectionMarkers = new Map<string, string[]>()
+  const handleEls = new Map<string, { group: SVGGElement; hit: SVGCircleElement; dot: SVGCircleElement }>()
+  const handleKeys = new Map<string, string>()
+  const textSizes = new Map<string, { width: number; height: number }>()
+  const styleTokens = new WeakMap<object, number>()
+  let styleTokenCounter = 0
+  let configVersion = 0
   let markerIdCounter = 0
-  let usedMarkerSignatures = new Set<string>()
   let activeIds = new Set<string>()
   let selectedIds = new Set<string>()
   let highlightedIds = new Set<string>()
   let focusedIds = new Set<string>()
+  const proxiedIds = new Set<string>()
+  let drawnLastUpdate = 0
 
   const hoverEnabled = (id: string) => hoverableFlags.get(id) ?? config().interaction?.hover ?? false
+
+  function styleToken(id: string): string {
+    const key = styleKeys.get(id)
+    if (key !== undefined) return `k${key}`
+    const own = styles.get(id)
+    if (own === undefined) return ''
+    let token = styleTokens.get(own)
+    if (token === undefined) {
+      token = styleTokenCounter++
+      styleTokens.set(own, token)
+    }
+    return `t${token}`
+  }
 
   function pruneHovered() {
     const next = [...activeIds].filter(hoverEnabled)
@@ -163,6 +227,7 @@ export function createSvgLayer(
 
   function statesFor(id: string): ActiveStates {
     return {
+      proxied: proxiedIds.has(id),
       highlight: highlightedIds.has(id),
       hover: activeIds.has(id),
       selected: selectedIds.has(id),
@@ -174,12 +239,17 @@ export function createSvgLayer(
     const result = { ...NO_STATES }
     for (const id of ids) {
       const states = statesFor(id)
+      result.proxied ||= states.proxied
       result.highlight ||= states.highlight
       result.hover ||= states.hover
       result.selected ||= states.selected
       result.focus ||= states.focus
     }
     return result
+  }
+
+  function stateBits(states: ActiveStates): string {
+    return `${states.proxied ? 1 : 0}${states.highlight ? 1 : 0}${states.hover ? 1 : 0}${states.selected ? 1 : 0}${states.focus ? 1 : 0}`
   }
 
   function applyTheme() {
@@ -191,11 +261,12 @@ export function createSvgLayer(
     input: MarkerStyle | false | undefined,
     fallbackColor: string,
     fallbackOpacity: number | undefined,
+    used: string[],
   ): string | null {
     const resolved = resolveMarkerConfig(input, fallbackColor, config().markers?.sizes ?? {}, fallbackOpacity)
     if (!resolved) return null
     const signature = markerSignature(position, resolved)
-    usedMarkerSignatures.add(signature)
+    used.push(signature)
     let el = markerDefs.get(signature)
     if (!el) {
       el = createMarkerElement(`vl-marker-${instanceId}-${markerIdCounter++}`, position, resolved)
@@ -224,10 +295,18 @@ export function createSvgLayer(
 
     const fallbackColor = color ?? themeLineColor(config().theme, active)
     const markerIds: Record<'start' | 'end', string | null> = { start: null, end: null }
+    const used: string[] = []
     for (const position of ['start', 'end'] as const) {
       const merged = mergeMarkerInputs(config().markers?.[position], own?.markers?.[position])
-      markerIds[position] = ensureMarker(position, merged ? layered(merged, active) : merged, fallbackColor, opacity)
+      markerIds[position] = ensureMarker(
+        position,
+        merged ? layered(merged, active) : merged,
+        fallbackColor,
+        opacity,
+        used,
+      )
     }
+    connectionMarkers.set(id, used)
     el.style.markerStart = markerIds.start && !hidden.start ? `url(#${markerIds.start})` : ''
     el.style.markerEnd = markerIds.end && !hidden.end ? `url(#${markerIds.end})` : ''
 
@@ -324,6 +403,9 @@ export function createSvgLayer(
   function paintPort(key: string, el: SVGCircleElement) {
     const input = portInputs.get(key)
     const active = statesForAny(input?.connectionIds ?? [])
+    const paintKey = `${configVersion}|${stateBits(active)}`
+    if (portPaintKeys.get(key) === paintKey) return
+    portPaintKeys.set(key, paintKey)
     const portStyle = layered(config().ports, active)
     setStyle(el, 'r', portStyle.radius != null ? `${portStyle.radius}px` : undefined)
     setStyle(el, 'fill', portStyle.fill)
@@ -332,11 +414,29 @@ export function createSvgLayer(
     setStyle(el, 'opacity', portStyle.opacity)
   }
 
-  function paintLabel(key: string, g: SVGGElement) {
-    const input = labelInputs.get(key)
-    if (!input) return
+  function labelPaintKey(input: SvgLabelInput): string {
     const active = statesFor(input.connectionId)
-    const labelStyle = layered(config().labels, active)
+    return [
+      configVersion,
+      stateBits(active),
+      input.text,
+      input.className ?? '',
+      input.point.x,
+      input.point.y,
+      input.rotation,
+    ].join('|')
+  }
+
+  function labelStyleFor(input: SvgLabelInput) {
+    return layered(config().labels, statesFor(input.connectionId))
+  }
+
+  function textSizeKey(input: SvgLabelInput, fontSize: number | undefined): string {
+    return `${input.text}|${input.className ?? ''}|${fontSize ?? ''}`
+  }
+
+  function writeLabelStyle(input: SvgLabelInput, g: SVGGElement) {
+    const labelStyle = labelStyleFor(input)
     const rect = g.firstElementChild as SVGRectElement
     const text = g.lastElementChild as SVGTextElement
 
@@ -346,12 +446,16 @@ export function createSvgLayer(
     setStyle(rect, 'stroke', labelStyle.border)
     setStyle(text, 'fill', labelStyle.color)
     setStyle(g, 'opacity', labelStyle.opacity)
-    const fontSize = labelStyle.fontSize ?? LABEL_FONT_SIZE
     setStyle(text, 'font-size', labelStyle.fontSize != null ? `${labelStyle.fontSize}px` : undefined)
+    return labelStyle
+  }
 
-    const measured = measureText(text)
-    const width = measured.width || input.text.length * LABEL_FALLBACK_CHAR_WIDTH * (fontSize / LABEL_FONT_SIZE)
-    const height = measured.height || fontSize
+  function writeLabelBox(input: SvgLabelInput, g: SVGGElement, size: { width: number; height: number }) {
+    const labelStyle = labelStyleFor(input)
+    const rect = g.firstElementChild as SVGRectElement
+    const fontSize = labelStyle.fontSize ?? LABEL_FONT_SIZE
+    const width = size.width || input.text.length * LABEL_FALLBACK_CHAR_WIDTH * (fontSize / LABEL_FONT_SIZE)
+    const height = size.height || fontSize
     const boxWidth = width + (labelStyle.paddingX ?? LABEL_PADDING_X) * 2
     const boxHeight = height + (labelStyle.paddingY ?? LABEL_PADDING_Y) * 2
     rect.setAttribute('x', String(-boxWidth / 2))
@@ -362,19 +466,60 @@ export function createSvgLayer(
     g.setAttribute('transform', `translate(${input.point.x} ${input.point.y}) rotate(${input.rotation})`)
   }
 
+  function paintLabels(keys: string[]) {
+    const pending: { key: string; input: SvgLabelInput; g: SVGGElement; sizeKey: string }[] = []
+    for (const key of keys) {
+      const input = labelInputs.get(key)
+      const g = labelEls.get(key)
+      if (!input || !g) continue
+      const paintKey = labelPaintKey(input)
+      if (labelKeys.get(key) === paintKey) continue
+      labelKeys.set(key, paintKey)
+      const labelStyle = writeLabelStyle(input, g)
+      pending.push({ key, input, g, sizeKey: textSizeKey(input, labelStyle.fontSize) })
+    }
+    for (const entry of pending) {
+      if (textSizes.has(entry.sizeKey)) continue
+      textSizes.set(entry.sizeKey, measureText(entry.g.lastElementChild as SVGTextElement))
+    }
+    for (const entry of pending) writeLabelBox(entry.input, entry.g, textSizes.get(entry.sizeKey)!)
+  }
+
+  function refreshConnection(id: string, el: SVGPathElement, activeKeys: Set<string>): boolean {
+    const hit = hits.get(id)
+    const active = activeIds.has(id) || highlightedIds.has(id)
+    const hidden = hiddenEnds(id, active, activeKeys)
+    const states = statesFor(id)
+    const key = [
+      configVersion,
+      styleToken(id),
+      stateBits(states),
+      hidden.start ? 1 : 0,
+      hidden.end ? 1 : 0,
+      hoverableFlags.get(id) ?? '',
+      selectable() ? 1 : 0,
+      ariaLabels.get(id) ?? '',
+    ].join('|')
+    if (appearanceKeys.get(id) === key) return false
+    appearanceKeys.set(id, key)
+    el.classList.toggle('vl-connection--active', active)
+    el.classList.toggle('vl-connection--selected', states.selected)
+    el.classList.toggle('vl-connection--focus', states.focus)
+    const label = ariaLabels.get(id)
+    if (label) el.setAttribute('aria-label', label)
+    if (hit) configureHit(id, hit)
+    applyConnectionAppearance(id, el, hidden)
+    return true
+  }
+
   function applyAll() {
     const activeKeys = activeEndpointKeys()
     for (const [id, el] of paths) {
-      const active = activeIds.has(id) || highlightedIds.has(id)
-      const selected = selectedIds.has(id)
-      el.classList.toggle('vl-connection--active', active)
-      el.classList.toggle('vl-connection--selected', selected)
-      el.classList.toggle('vl-connection--focus', focusedIds.has(id))
-      if (selectable()) hits.get(id)?.setAttribute('aria-pressed', String(selected))
-      applyConnectionAppearance(id, el, hiddenEnds(id, active, activeKeys))
+      if (selectable()) hits.get(id)?.setAttribute('aria-pressed', String(selectedIds.has(id)))
+      refreshConnection(id, el, activeKeys)
     }
     for (const [key, el] of ports) paintPort(key, el)
-    for (const [key, g] of labelEls) paintLabel(key, g)
+    paintLabels([...labelEls.keys()])
     raiseActivePaths()
   }
 
@@ -390,20 +535,20 @@ export function createSvgLayer(
         g.remove()
         labelEls.delete(key)
         labelInputs.delete(key)
+        labelKeys.delete(key)
       }
     }
     for (const input of inputs) {
       labelInputs.set(input.key, input)
-      let g = labelEls.get(input.key)
-      if (!g) {
-        g = document.createElementNS(SVG_NS, 'g')
+      if (!labelEls.has(input.key)) {
+        const g = document.createElementNS(SVG_NS, 'g')
         g.appendChild(document.createElementNS(SVG_NS, 'rect')).setAttribute('class', 'vl-label-bg')
         g.appendChild(document.createElementNS(SVG_NS, 'text')).setAttribute('class', 'vl-label-text')
         labelsLayer.appendChild(g)
         labelEls.set(input.key, g)
       }
-      paintLabel(input.key, g)
     }
+    paintLabels(inputs.map((input) => input.key))
   }
 
   function createConnection(id: string): SVGPathElement {
@@ -436,23 +581,30 @@ export function createSvgLayer(
     return el
   }
 
-  function update(nextPaths: SvgPathInput[], nextPorts: SvgPortInput[], nextLabels: SvgLabelInput[] = []) {
-    usedMarkerSignatures = new Set<string>()
+  function removeConnectionElements(id: string) {
+    paths.get(id)?.remove()
+    paths.delete(id)
+    hits.get(id)?.remove()
+    hits.delete(id)
+    flows.get(id)?.remove()
+    flows.delete(id)
+    styles.delete(id)
+    styleKeys.delete(id)
+    ariaLabels.delete(id)
+    hoverableFlags.delete(id)
+    focusedIds.delete(id)
+    proxiedIds.delete(id)
+    endpointKeys.delete(id)
+    lastD.delete(id)
+    appearanceKeys.delete(id)
+    connectionMarkers.delete(id)
+  }
+
+  function update(nextPaths: SvgPathInput[], nextPorts: SvgPortInput[], nextLabels: SvgLabelInput[] = []): number {
+    drawnLastUpdate = 0
     const nextPathIds = new Set(nextPaths.map((path) => path.id))
-    for (const [id, el] of paths) {
-      if (!nextPathIds.has(id)) {
-        el.remove()
-        paths.delete(id)
-        hits.get(id)?.remove()
-        hits.delete(id)
-        flows.get(id)?.remove()
-        flows.delete(id)
-        styles.delete(id)
-        ariaLabels.delete(id)
-        hoverableFlags.delete(id)
-        focusedIds.delete(id)
-        endpointKeys.delete(id)
-      }
+    for (const id of [...paths.keys()]) {
+      if (!nextPathIds.has(id)) removeConnectionElements(id)
     }
     for (const input of nextPaths) {
       endpointKeys.set(input.id, {
@@ -462,30 +614,34 @@ export function createSvgLayer(
         toClipped: input.toClipped,
       })
       styles.set(input.id, input.style)
+      styleKeys.set(input.id, input.styleKey)
       hoverableFlags.set(input.id, input.hoverable)
       if (input.ariaLabel) ariaLabels.set(input.id, input.ariaLabel)
+      if (input.proxied) proxiedIds.add(input.id)
+      else proxiedIds.delete(input.id)
     }
     pruneHovered()
     const activeKeys = activeEndpointKeys()
     for (const input of nextPaths) {
+      const created = !paths.has(input.id)
       const el = paths.get(input.id) ?? createConnection(input.id)
-      el.setAttribute('d', input.d)
-      if (input.ariaLabel) el.setAttribute('aria-label', input.ariaLabel)
-      const hit = hits.get(input.id)
-      if (hit) {
-        hit.setAttribute('d', input.d)
-        configureHit(input.id, hit)
+      let drawn = created
+      if (lastD.get(input.id) !== input.d) {
+        lastD.set(input.id, input.d)
+        el.setAttribute('d', input.d)
+        hits.get(input.id)?.setAttribute('d', input.d)
+        flows.get(input.id)?.setAttribute('d', input.d)
+        drawn = true
       }
-      const emphasised = activeIds.has(input.id) || highlightedIds.has(input.id)
-      el.classList.toggle('vl-connection--active', emphasised)
-      el.classList.toggle('vl-connection--selected', selectedIds.has(input.id))
-      el.classList.toggle('vl-connection--focus', focusedIds.has(input.id))
-      applyConnectionAppearance(input.id, el, hiddenEnds(input.id, emphasised, activeKeys))
+      if (refreshConnection(input.id, el, activeKeys)) drawn = true
+      if (drawn) drawnLastUpdate++
     }
     raiseActivePaths()
 
+    const usedMarkers = new Set<string>()
+    for (const signatures of connectionMarkers.values()) for (const signature of signatures) usedMarkers.add(signature)
     for (const [signature, el] of markerDefs) {
-      if (!usedMarkerSignatures.has(signature)) {
+      if (!usedMarkers.has(signature)) {
         el.remove()
         markerDefs.delete(signature)
       }
@@ -497,6 +653,7 @@ export function createSvgLayer(
         el.remove()
         ports.delete(key)
         portInputs.delete(key)
+        portPaintKeys.delete(key)
       }
     }
     for (const input of nextPorts) {
@@ -514,14 +671,18 @@ export function createSvgLayer(
     }
 
     updateLabels(nextLabels)
+    return drawnLastUpdate
   }
 
   function applyConfig() {
+    configVersion++
+    textSizes.clear()
     applyTheme()
     pruneHovered()
     for (const [id, hit] of hits) configureHit(id, hit)
     if (!selectable() && focusedIds.size > 0) focusedIds = new Set()
     applyAll()
+    repaintHandles()
   }
 
   function setHoveredConnections(ids: Iterable<string>) {
@@ -539,20 +700,160 @@ export function createSvgLayer(
     applyAll()
   }
 
+  function ensureHandlesLayer(): SVGGElement {
+    if (!handlesLayer) {
+      ensureConnectStyle()
+      handlesLayer = document.createElementNS(SVG_NS, 'g')
+      handlesLayer.setAttribute('class', 'vl-handles')
+      svg.appendChild(handlesLayer)
+    }
+    return handlesLayer
+  }
+
+  let handleInputs = new Map<string, SvgHandleInput>()
+
+  function paintHandleDot(dot: SVGCircleElement, input: SvgHandleInput) {
+    const stateStyle = input.state ? config().ports?.connect?.[input.state] : undefined
+    dot.setAttribute('class', handleClass(input))
+    setStyle(dot, 'r', stateStyle?.radius != null ? `${stateStyle.radius}px` : undefined)
+    setStyle(dot, 'fill', stateStyle?.fill)
+    setStyle(dot, 'stroke', stateStyle?.stroke)
+    setStyle(dot, 'stroke-width', stateStyle?.strokeWidth)
+    setStyle(dot, 'opacity', stateStyle?.opacity)
+  }
+
+  function handleClass(input: SvgHandleInput): string {
+    return [
+      'vl-handle',
+      input.visible || input.state ? 'vl-handle--visible' : '',
+      input.state ? `vl-handle--${input.state}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
+
+  function handleKey(input: SvgHandleInput): string {
+    return [configVersion, input.point.x, input.point.y, input.radius, input.state ?? '', input.visible ? 1 : 0].join(
+      '|',
+    )
+  }
+
+  function setHandles(inputs: SvgHandleInput[]) {
+    if (inputs.length === 0 && !handlesLayer) return
+    const layer = ensureHandlesLayer()
+    const keys = new Set(inputs.map((input) => input.key))
+    for (const [key, els] of handleEls) {
+      if (!keys.has(key)) {
+        els.group.remove()
+        handleEls.delete(key)
+        handleKeys.delete(key)
+        handleInputs.delete(key)
+      }
+    }
+    for (const input of inputs) {
+      handleInputs.set(input.key, input)
+      let els = handleEls.get(input.key)
+      if (!els) {
+        const group = document.createElementNS(SVG_NS, 'g')
+        group.setAttribute('class', 'vl-handle-group')
+        group.setAttribute('data-vl-handle', input.key)
+        const hit = document.createElementNS(SVG_NS, 'circle')
+        hit.setAttribute('class', 'vl-handle-hit')
+        hit.setAttribute('aria-hidden', 'true')
+        const dot = document.createElementNS(SVG_NS, 'circle')
+        group.append(hit, dot)
+        const key = input.key
+        hit.addEventListener('pointerdown', (event) => handlers.onHandlePointerDown?.(key, event))
+        hit.addEventListener('click', (event) => handlers.onHandleClick?.(key, event))
+        layer.appendChild(group)
+        els = { group, hit, dot }
+        handleEls.set(input.key, els)
+      }
+      const nextKey = handleKey(input)
+      if (handleKeys.get(input.key) === nextKey) continue
+      handleKeys.set(input.key, nextKey)
+      els.group.setAttribute('transform', `translate(${input.point.x} ${input.point.y})`)
+      els.hit.setAttribute('r', String(input.radius))
+      paintHandleDot(els.dot, input)
+    }
+  }
+
+  function repaintHandles() {
+    handleKeys.clear()
+    setHandles([...handleInputs.values()])
+  }
+
+  function clearHandles() {
+    for (const els of handleEls.values()) els.group.remove()
+    handleEls.clear()
+    handleKeys.clear()
+    handleInputs = new Map()
+  }
+
+  function setPreview(d: string | null, validity: 'valid' | 'invalid' | null = null) {
+    if (d === null) {
+      previewPath?.remove()
+      previewPath = null
+      return
+    }
+    if (!previewPath) {
+      ensureConnectStyle()
+      previewPath = document.createElementNS(SVG_NS, 'path')
+      previewPath.setAttribute('aria-hidden', 'true')
+      svg.appendChild(previewPath)
+    }
+    previewPath.setAttribute('class', `vl-connect-preview${validity ? ` vl-connect-preview--${validity}` : ''}`)
+    previewPath.setAttribute('d', d)
+  }
+
+  function stylePreview(apply: (el: SVGPathElement) => void) {
+    if (previewPath) apply(previewPath)
+  }
+
+  function announce(text: string) {
+    if (!liveRegion) {
+      liveRegion = document.createElement('div')
+      liveRegion.className = 'vl-live'
+      liveRegion.setAttribute('aria-live', 'polite')
+      liveRegion.setAttribute('role', 'status')
+      container.appendChild(liveRegion)
+    }
+    liveRegion.textContent = text
+  }
+
+  function removeLiveRegion() {
+    liveRegion?.remove()
+    liveRegion = null
+  }
+
   function destroy() {
     svg.remove()
+    liveRegion?.remove()
+    liveRegion = null
+    handlesLayer = null
+    previewPath = null
     paths.clear()
     hits.clear()
     flows.clear()
     labelEls.clear()
     labelInputs.clear()
+    labelKeys.clear()
     ports.clear()
     portInputs.clear()
+    portPaintKeys.clear()
     markerDefs.clear()
     styles.clear()
+    styleKeys.clear()
     ariaLabels.clear()
     hoverableFlags.clear()
     endpointKeys.clear()
+    lastD.clear()
+    appearanceKeys.clear()
+    connectionMarkers.clear()
+    handleEls.clear()
+    handleKeys.clear()
+    handleInputs.clear()
+    textSizes.clear()
   }
 
   applyTheme()
@@ -564,6 +865,12 @@ export function createSvgLayer(
     setHoveredConnections,
     setHighlightedConnections,
     setSelectedConnections,
+    setHandles,
+    clearHandles,
+    setPreview,
+    stylePreview,
+    announce,
+    removeLiveRegion,
     contains: (node: Node) => svg.contains(node),
     destroy,
   }

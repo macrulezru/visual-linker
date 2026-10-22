@@ -23,6 +23,9 @@ monorepo. Framework adapter:
 - **Per-connection styling** — color, width, dashed, start/end markers (`circle`/`square`/`diamond`/`arrow`, or raw custom SVG), and and a distinct look for the hover, selected and focus states — one structured configuration for lines, markers, ports, labels and colors, overridable per connection, and changeable at runtime
 - **Pointer-driven drag & drop** — an optional `dragHandle`, a `blocks.drag.grid` snap, and `blocks.drag.bounds` confined to the container/an element/an inset box, re-resolved live on every pointer move
 - **A typed event API** — drag/hover/click events, plus a `layout` event fired on every render pass with every connection's and port's resolved geometry (points, angles, midpoints), for positioning your own overlay content
+- **Creating connections** — the user drags from port to port, clicks two ports, or uses the keyboard; the library reports `connection:create-request` and your code decides (`interaction.connect`, off by default)
+- **Fallback ends** — a connection whose block is collapsed or not rendered is drawn to its nearest visible ancestor, in a `proxied` state you can style
+- **Built for hundreds of blocks** — only changed lines are redrawn, blocks without connections cost nothing, `batch()` groups changes, `performance.cull` skips lines nobody can see, `getStats()` shows what happened
 - **Auto-managed positioning** — sets `container`'s CSS position to `relative` for you if it's still `static`, so the SVG overlay lines up with your blocks with zero required setup CSS
 - **Zero runtime dependencies, zero peer dependencies** — usable standalone in any environment, including outside a framework entirely
 
@@ -96,7 +99,14 @@ const linker = createVisualLinker(el, {
   ports: { show: true, radius: 4, fill: '#fff', stroke: '#2e8b57', hover: { radius: 6 }, spread: { gap: 16 } },
   labels: { background: '#fff', color: '#1c1e2b', fontSize: 11, hover: { background: '#eef' } },
   blocks: { draggable: true, drag: { grid: 20, bounds: 'container' } },
-  interaction: { hover: true, highlight: true, selectable: true, clipToScrollParents: 'pin' },
+  interaction: {
+    hover: true,
+    highlight: true,
+    selectable: true,
+    clipToScrollParents: 'pin',
+    connect: { enabled: true, mode: 'both' }, // users draw connections — see Creating connections below
+  },
+  performance: { cull: true, maxConnectionsForJumps: 150 }, // see Many blocks and connections below
 })
 ```
 
@@ -376,6 +386,58 @@ Connected lines re-route in real time as a block moves — no manual
 `HTMLElement` (a drop-zone elsewhere in the layout) or an inset object
 (`{ top, right, bottom, left }`, shrinking the container's own box).
 
+#### Creating connections
+
+```ts
+const linker = createVisualLinker(el, {
+  interaction: {
+    connect: {
+      enabled: true, // off by default: no handles, no tabindex, no live region
+      mode: 'both', // 'drag' | 'click' | 'both'
+      validate: (from, to) => to.portId !== 'locked' || 'This field is locked',
+    },
+  },
+})
+
+linker.on('connection:create-request', ({ from, to, via }) => {
+  connections.push({ id: `${from.portId}>${to.portId}`, from, to }) // the library adds nothing itself
+  linker.setConnections(connections)
+})
+```
+
+Drag from a port handle to another port, click two ports in turn, or focus a port and press Enter, Tab to a target,
+Enter again (Escape cancels). `connect: 'source' | 'target' | 'both' | false` on a block or port decides which ends
+take part; `ports.connect.{source, candidate, target, invalid}` and the `data-vl-connecting` /
+`data-vl-connect-state` attributes style the gesture; an `aria-live` region announces it (`announce`). Your own
+handlers can drive it with `startConnect(from)`, `completeConnect(to)`, `cancelConnect()` and `isConnecting()`.
+
+#### Fallback ends
+
+```ts
+{
+  id: 'first>fullName',
+  from: { blockId: 'user.name.first', fallback: ['user.name', 'user'] }, // the nearest visible ancestor
+  to: { blockId: 'person.fullName' },
+}
+```
+
+When a block is not registered (a collapsed tree node, a row a virtualized list has not rendered), or its port is
+scrolled out of view, the end is drawn to the first usable `fallback` block and the connection takes the `proxied`
+state (`lines.proxied`, `style.proxied`). `ConnectionLayout.proxied` tells which end moved.
+
+#### Many blocks and connections
+
+```ts
+linker.batch(() => {
+  for (const link of links) linker.addConnection(link) // one render for all of them
+})
+linker.getStats() // { blocks, connections, rendered, culled, proxied, lastRenderMs, medianRenderMs, observedElements }
+```
+
+Only changed connections are redrawn, every rectangle is measured once per frame before any write, and a block without
+connections is neither observed nor measured. `performance: { cull, maxConnectionsForJumps, maxRoutingNodes,
+maxObstacleBlocks }` bounds the expensive modes. `pnpm test:perf` measures the bench stand and writes `docs/PERFORMANCE.md`.
+
 #### Events
 
 ```ts
@@ -386,7 +448,8 @@ linker.on('layout', ({ connections, ports }) => {
 ```
 
 `block:dragstart`/`drag`/`dragend`, `block:mouseenter`/`mouseleave`,
-`connection:click`/`mouseenter`/`mouseleave`/`selectionchange`/`delete-request`, and `layout` — every `on()`
+`connection:click`/`mouseenter`/`mouseleave`/`selectionchange`/`delete-request`, `connect:start`,
+`connection:create-request`/`create-cancel`, and `layout` — every `on()`
 call returns its own unsubscribe function.
 
 ---

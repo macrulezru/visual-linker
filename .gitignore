@@ -4,4 +4,8 @@ dist
 *.log
 coverage
 .vite
-docs
+docs/*
+!docs/PERFORMANCE.md
+test-results
+playwright-report
+perf/results.json

@@ -3,3 +3,7 @@ dist
 coverage
 .vite
 pnpm-lock.yaml
+test-results
+playwright-report
+packages/core/test/__golden__
+docs/PERFORMANCE.md

@@ -24,9 +24,11 @@ option tuning).
 - **Two scopes** — `scope="container"` (default) draws inside the component's own box; `scope="page"` links elements anywhere in the document, drawing in a fixed layer teleported to `<body>`
 - **Live discovery** — blocks and ports added, removed or re-marked later (`v-if`, `v-for`, third-party markup) are picked up automatically
 - **Ref/getter-friendly everywhere** — a block's `el`, `dragHandle`, `dragBounds`, and a port's `target`/`anchorEl` all accept a Vue template ref directly
+- **Creating connections** — `@connection-create-request` / `@connection-create-cancel` / `@connect-start`, `connect` on `v-vl-block` / `v-vl-port` (or `data-vl-connect`), and `startConnect` / `completeConnect` / `cancelConnect` / `isConnecting` through a template ref
+- **Fallback ends and big diagrams** — `fallback` on a connection end, incremental block registry, id-based `connections` diff, `batch` and `stats()`
 - **Three overlay slots** — `#connection-label`, `#port`, `#marker` — HTML content positioned exactly where the engine's own SVG drawing puts each connection/port
 - **`useVisualLinker()`** — the low-level composable, wired straight to a container element you render yourself
-- **A reactive `config`** — one structured configuration (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`) that follows your state: change the prop, a ref or the app-wide shared config (`VisualLinkerPlugin`'s `config`, `useVisualLinkerConfig()`) and every diagram re-renders live. Nothing is global: the shared config is a `provide` of the app (or a subtree)
+- **A reactive `config`** — one structured configuration (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`, `performance`) that follows your state: change the prop, a ref or the app-wide shared config (`VisualLinkerPlugin`'s `config`, `useVisualLinkerConfig()`) and every diagram re-renders live. Nothing is global: the shared config is a `provide` of the app (or a subtree)
 - **The full `@macrulez/visual-linker-core` surface, re-exported** — `createVisualLinker`, every enum and every type, no separate core install needed
 - **SSR-safe by design** — the engine and its drawing layer only exist client-side after mount; the directives emit their `data-vl-*` attributes during SSR too
 
@@ -164,7 +166,9 @@ In page scope the lines are drawn in a `position: fixed` layer covering the view
 
 Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 `block-drag`, `block-dragend`, `block-mouseenter`, `block-mouseleave`,
-`connection-click`, `connection-mouseenter`, `connection-mouseleave`.
+`connection-click`, `connection-mouseenter`, `connection-mouseleave`, plus
+`connection-selectionchange`, `connection-delete-request`, `connect-start`,
+`connection-create-request` and `connection-create-cancel`.
 
 #### Selecting connections
 
@@ -184,6 +188,29 @@ the selection. `@connection-selectionchange` receives the same array,
 `@connection-delete-request` the connections to delete (Delete/Backspace on a
 focused line) — you decide whether to remove them. See the core README for the
 full keyboard/ARIA behaviour and `style.selected`.
+
+#### Creating connections
+
+```vue
+<VisualLinker
+  ref="linker"
+  :connections="rules"
+  :config="{ interaction: { connect: { enabled: true, validate } } }"
+  @connection-create-request="({ from, to }) => rules.push({ id: `${from.portId}>${to.portId}`, from, to })"
+>
+  <div v-vl-block="'source'">
+    <div v-vl-port="{ id: 'email', side: 'right' }">email</div>
+  </div>
+  <div v-vl-block="'target'">
+    <div v-vl-port="{ id: 'mail', side: 'left', connect: 'target' }">mail</div>
+  </div>
+</VisualLinker>
+```
+
+The library never adds the connection: you do, from the event. `linker.value.startConnect(...)`,
+`completeConnect(...)`, `cancelConnect()`, `isConnecting()`, `batch(fn)` and `stats()` are exposed on the template ref;
+`useVisualLinker()` returns the same functions. The component updates its block registry from the directive hooks
+(200 blocks mounted in one tick are one update) and sends the engine only the connections that changed.
 
 #### Overlay slots
 

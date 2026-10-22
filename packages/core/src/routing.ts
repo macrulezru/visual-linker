@@ -309,6 +309,7 @@ export function createRouteCache(limit = 400) {
         options.padding,
         options.stub ?? '',
         options.bendPenalty ?? '',
+        options.maxNodes ?? '',
         ...obstacles.map((rect) => `${round(rect.left)},${round(rect.top)},${round(rect.right)},${round(rect.bottom)}`),
       ].join('|')
       if (entries.has(key)) return entries.get(key)!

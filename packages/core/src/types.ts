@@ -4,8 +4,12 @@ import type { Point } from './geometry'
 export type FixedSide = `${VLFixedSideEnum.TOP | VLFixedSideEnum.RIGHT | VLFixedSideEnum.BOTTOM | VLFixedSideEnum.LEFT}`
 export type PortSide = FixedSide | `${VLFixedSideEnum.AUTO}`
 
+export type ConnectRole = 'source' | 'target' | 'both' | false
+
 export interface PortDescriptor {
   id: string
+  connect?: ConnectRole
+  ariaLabel?: string
   target?: string | HTMLElement
   side?: PortSide | FixedSide[]
   offset?: number
@@ -33,6 +37,7 @@ export type DragBounds = 'container' | HTMLElement | DragBoundsInset
 export interface BlockDescriptor {
   id: string
   el: HTMLElement
+  connect?: ConnectRole
   ports?: PortDescriptor[]
   draggable?: boolean
   dragHandle?: string | HTMLElement
@@ -47,9 +52,10 @@ export type ConnectionCurve =
 export type MarkerShape =
   `${VLMarkerShapeEnum.CIRCLE | VLMarkerShapeEnum.SQUARE | VLMarkerShapeEnum.DIAMOND | VLMarkerShapeEnum.ARROW}`
 
-export type VisualState = 'highlight' | 'hover' | 'selected' | 'focus'
+export type VisualState = 'proxied' | 'highlight' | 'hover' | 'selected' | 'focus'
 
 export type Stateful<T> = T & {
+  proxied?: Partial<T>
   highlight?: Partial<T>
   hover?: Partial<T>
   selected?: Partial<T>
@@ -156,7 +162,12 @@ export interface PortStyle {
   opacity?: number
 }
 
+export type ConnectPortState = 'source' | 'candidate' | 'invalid' | 'target'
+
+export type ConnectPortStates = { [K in ConnectPortState]?: PortStyle }
+
 export type PortsConfig = Stateful<PortStyle> & {
+  connect?: ConnectPortStates
   show?: boolean
   side?: PortSide | FixedSide[]
   offset?: number
@@ -183,11 +194,56 @@ export interface BlocksConfig {
   }
 }
 
+export type ConnectMode = 'drag' | 'click' | 'both'
+export type ConnectOrigin = 'port' | 'block' | 'both'
+export type ConnectHandleVisibility = 'hover' | 'always' | 'never'
+export type ConnectVia = 'drag' | 'click' | 'keyboard'
+export type ConnectCancelReason = 'escape' | 'no-target' | 'invalid' | 'pointer-cancel' | 'api'
+
+export interface ConnectMessageContext {
+  from?: ConnectionEndpoint
+  to?: ConnectionEndpoint
+  message?: string
+}
+
+export type ConnectMessage = string | ((context: ConnectMessageContext) => string)
+
+export interface ConnectMessages {
+  start?: ConnectMessage
+  candidate?: ConnectMessage
+  complete?: ConnectMessage
+  cancel?: ConnectMessage
+  invalid?: ConnectMessage
+}
+
+export interface ConnectConfig {
+  enabled?: boolean
+  mode?: ConnectMode
+  from?: ConnectOrigin
+  to?: ConnectOrigin
+  handle?: ConnectHandleVisibility
+  snap?: number
+  allowSelf?: boolean
+  allowDuplicates?: boolean
+  autoScroll?: boolean
+  preview?: Stateful<LineStyle> & LineOptions
+  announce?: ConnectMessages
+  validate?: (from: ConnectionEndpoint, to: ConnectionEndpoint) => boolean | string
+}
+
 export interface InteractionConfig {
   hover?: boolean
   highlight?: boolean
   selectable?: boolean
   clipToScrollParents?: boolean | 'pin' | 'hide'
+  connect?: ConnectConfig
+}
+
+export interface PerformanceConfig {
+  cull?: boolean | { margin?: number }
+  maxConnectionsForJumps?: number
+  maxRoutingNodes?: number
+  maxObstacleBlocks?: number
 }
 
 export interface Theme {
@@ -201,6 +257,9 @@ export interface Theme {
   labelBackground?: string
   labelBorder?: string
   labelText?: string
+  connectPreview?: string
+  connectValid?: string
+  connectInvalid?: string
 }
 
 export interface VisualLinkerConfig {
@@ -211,11 +270,18 @@ export interface VisualLinkerConfig {
   labels?: LabelsConfig
   blocks?: BlocksConfig
   interaction?: InteractionConfig
+  performance?: PerformanceConfig
+}
+
+export interface ConnectionEndpointRef {
+  blockId: string
+  portId?: string
 }
 
 export interface ConnectionEndpoint {
   blockId: string
   portId?: string
+  fallback?: Array<string | ConnectionEndpointRef>
 }
 
 export interface ConnectionLabel {
@@ -256,6 +322,7 @@ export interface ConnectionLayout {
   labels: LabelLayout[]
   fromClipped?: boolean
   toClipped?: boolean
+  proxied?: { from?: boolean; to?: boolean }
 }
 
 export interface PortLayout {
@@ -277,4 +344,12 @@ export interface VisualLinkerEventMap {
   'connection:selectionchange': { selectedIds: string[] }
   'connection:delete-request': { connections: ConnectionDescriptor[] }
   layout: { connections: ConnectionLayout[]; ports: PortLayout[] }
+  'connect:start': { from: ConnectionEndpoint }
+  'connection:create-request': {
+    from: ConnectionEndpoint
+    to: ConnectionEndpoint
+    via: ConnectVia
+    modifiers: { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean }
+  }
+  'connection:create-cancel': { from: ConnectionEndpoint; reason: ConnectCancelReason; message?: string }
 }

@@ -11,6 +11,9 @@ export const THEME_VARS: Record<keyof Theme, string> = {
   labelBackground: '--vl-label-bg',
   labelBorder: '--vl-label-border',
   labelText: '--vl-label-color',
+  connectPreview: '--vl-connect-preview-color',
+  connectValid: '--vl-connect-valid-color',
+  connectInvalid: '--vl-connect-invalid-color',
 }
 
 export const lightTheme: Theme = {
@@ -24,6 +27,9 @@ export const lightTheme: Theme = {
   labelBackground: '#ffffff',
   labelBorder: '#2e8b57',
   labelText: '#1c1e2b',
+  connectPreview: '#1f6feb',
+  connectValid: '#2e8b57',
+  connectInvalid: '#d64545',
 }
 
 export const darkTheme: Theme = {
@@ -37,6 +43,9 @@ export const darkTheme: Theme = {
   labelBackground: '#1b1d2b',
   labelBorder: '#6fcf97',
   labelText: '#e6e8f2',
+  connectPreview: '#8ab4ff',
+  connectValid: '#6fcf97',
+  connectInvalid: '#ff7b7b',
 }
 
 export function defineTheme(overrides: Theme, base: Theme = lightTheme): Theme {

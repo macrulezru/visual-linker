@@ -17,7 +17,7 @@ monorepo.
 
 - **Auto-imports `<VisualLinker>` and `useVisualLinker`** — registered/imported from `@macrulez/visual-linker-vue`, no explicit `import` anywhere in your app
 - **Registers `v-vl-block` / `v-vl-port` globally** — on the server too, so the `data-vl-*` discovery attributes are already in the server-rendered HTML
-- **The whole configuration, set once** — `visualLinker` in `nuxt.config.ts` takes the same structure as the engine (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`), applied to every diagram
+- **The whole configuration, set once** — `visualLinker` in `nuxt.config.ts` takes the same structure as the engine (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`, `performance`), applied to every diagram
 - **The configuration is shared through Vue's `provide`** — one reactive object per app, which `useVisualLinkerConfig()` exposes for runtime changes (a theme switch re-styles every diagram)
 - **Nothing needs `<ClientOnly>`** — the component/composable are SSR-safe on their own
 
@@ -98,12 +98,15 @@ separate list of module-only names to learn:
 | `ports`       | the built-in dot (`show`, `radius`, `fill`, `stroke`, states), default `side`/`offset`, `spread`              |
 | `labels`      | the look of library-drawn connection labels, with states                                                      |
 | `blocks`      | `draggable`, `drag: { grid, bounds }` (values must be plain data — `'container'` or an inset object)          |
-| `interaction` | `hover`, `highlight`, `selectable`, `clipToScrollParents`                                                     |
+| `interaction` | `hover`, `highlight`, `selectable`, `clipToScrollParents`, `connect` (without `validate`)                     |
+| `performance` | `cull` and the limits for jumps and routing                                                                   |
 
 Everything is optional and nothing is hardcoded in the module: a field left
 out falls through to `@macrulez/visual-linker-core`'s own built-in default.
 The options travel through `runtimeConfig.public.visualLinker`, so they must
-be JSON-serializable (no `HTMLElement` for `drag.bounds`).
+be JSON-serializable (no `HTMLElement` for `drag.bounds`). `interaction.connect.validate` is a function, so the
+module's options type leaves it out and a function passed anyway is dropped with a warning: set `validate` in the
+`config` of the `<VisualLinker>` that needs it.
 
 #### An app-wide look
 

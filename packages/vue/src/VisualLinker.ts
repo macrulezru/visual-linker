@@ -17,14 +17,25 @@ import {
   mergeConfig,
   mergeMarkerInputs,
   type BlockDescriptor,
+  type ConnectCancelReason,
   type ConnectionDescriptor,
+  type ConnectionEndpoint,
   type ConnectionLayout,
   type PortLayout,
   type VisualLinker as VisualLinkerEngine,
   type VisualLinkerConfig,
 } from '@macrulez/visual-linker-core'
 import { injectSharedConfig } from './sharedConfig'
-import { collectBlocks, OBSERVED_ATTRS, registerScope, sameBlocks, VL_ATTR, type VisualLinkerBlock } from './discovery'
+import {
+  OBSERVED_ATTRS,
+  registerScope,
+  sameBlocks,
+  VL_ATTR,
+  type ScopeChange,
+  type VisualLinkerBlock,
+} from './discovery'
+import { createBlockRegistry, isDirectiveManaged, type BlockRegistry } from './registry'
+import { connectionsSignature, createConnectionsSync } from './connectionsSync'
 
 export type { VisualLinkerBlock } from './discovery'
 
@@ -37,9 +48,53 @@ export type { VisualLinkerBlock } from './discovery'
  */
 export type VisualLinkerScope = 'container' | 'page'
 
+function emptyStats() {
+  return {
+    blocks: 0,
+    connections: 0,
+    rendered: 0,
+    culled: 0,
+    proxied: 0,
+    lastRenderMs: 0,
+    medianRenderMs: 0,
+    observedElements: 0,
+  }
+}
+
 function isInsideLayer(node: Node): boolean {
   const el = node instanceof Element ? node : node.parentElement
   return Boolean(el?.closest('.vl-layer'))
+}
+
+const MARKED = `[${VL_ATTR.block}],[${VL_ATTR.port}]`
+
+function hasPlainMarks(node: Node): boolean {
+  if (!(node instanceof Element)) return false
+  if (node.matches(MARKED) && !isDirectiveManaged(node)) return true
+  for (const marked of node.querySelectorAll(MARKED)) if (!isDirectiveManaged(marked)) return true
+  return false
+}
+
+function isRelevantMutation(record: MutationRecord): boolean {
+  if (isInsideLayer(record.target)) return false
+  if (record.type === 'attributes') return !(record.target instanceof Element && isDirectiveManaged(record.target))
+  for (const node of record.addedNodes) if (hasPlainMarks(node)) return true
+  for (const node of record.removedNodes) if (hasPlainMarks(node)) return true
+  return record.removedNodes.length > 0 && record.target instanceof Element && hasRemovedRegistered(record)
+}
+
+function hasRemovedRegistered(record: MutationRecord): boolean {
+  for (const node of record.removedNodes) {
+    if (!(node instanceof Element)) continue
+    if (node.matches(MARKED) || node.querySelector(MARKED)) return !isDirectiveRemoval(node)
+  }
+  return false
+}
+
+function isDirectiveRemoval(node: Element): boolean {
+  if (node.matches(MARKED) && !isDirectiveManaged(node)) return false
+  for (const marked of node.querySelectorAll(MARKED)) if (!isDirectiveManaged(marked)) return false
+  return true
 }
 
 /**
@@ -83,8 +138,11 @@ export const VisualLinker = defineComponent({
     'block-dragend',
     'block-mouseenter',
     'block-mouseleave',
+    'connect-start',
+    'connection-create-request',
+    'connection-create-cancel',
   ],
-  setup(props, { slots, emit, attrs }) {
+  setup(props, { slots, emit, attrs, expose }) {
     const root = ref<HTMLElement | null>(null)
     const layer = ref<HTMLElement | null>(null)
     // The layer only renders client-side after mount: keeps SSR output and the
@@ -98,6 +156,10 @@ export const VisualLinker = defineComponent({
     let unsubscribes: (() => void)[] = []
     let observer: MutationObserver | null = null
     let unregisterScope: (() => void) | null = null
+    let registry: BlockRegistry | null = null
+    let pendingChanges = new Map<HTMLElement, ScopeChange>()
+    let flushScheduled = false
+    const connectionsSync = createConnectionsSync(() => engine.value)
 
     const shared = injectSharedConfig()
     const effectiveConfig = () => mergeConfig<VisualLinkerConfig>(shared, props.config)
@@ -106,15 +168,56 @@ export const VisualLinker = defineComponent({
       scanTick.value++
     }
 
+    function currentRegistry(): BlockRegistry | null {
+      if (!root.value) return null
+      registry ??= createBlockRegistry(
+        { root: root.value, page: props.scope === 'page', name: props.name },
+        () => props.blocks,
+      )
+      return registry
+    }
+
+    function applyBlocks(next: BlockDescriptor[]) {
+      if (sameBlocks(next, lastBlocks)) return
+      lastBlocks = next
+      engine.value?.setBlocks(next)
+    }
+
+    function flushChanges() {
+      flushScheduled = false
+      const changes = pendingChanges
+      pendingChanges = new Map()
+      const current = registry
+      if (!current || !engine.value || changes.size === 0) return
+      const next = current.apply(changes.values())
+      if (next) applyBlocks(next)
+    }
+
+    function onScopeChange(change?: ScopeChange) {
+      if (!change) {
+        scheduleScan()
+        return
+      }
+      if (!registry) {
+        scheduleScan()
+        return
+      }
+      pendingChanges.set(change.el, change)
+      if (!flushScheduled) {
+        flushScheduled = true
+        queueMicrotask(flushChanges)
+      }
+    }
+
     onMounted(() => {
       isMounted.value = true
       if (!root.value) return
-      unregisterScope = registerScope(scheduleScan)
+      unregisterScope = registerScope(onScopeChange)
       // Picks up blocks/ports added, removed or re-marked by anything — a
       // v-if, a v-for, plain data attributes set by third-party markup. Our
       // own layer's churn (paths, overlay slots) is ignored.
       observer = new MutationObserver((records) => {
-        if (records.some((record) => !isInsideLayer(record.target))) scheduleScan()
+        if (records.some(isRelevantMutation)) scheduleScan()
       })
       observer.observe(props.scope === 'page' ? document.body : root.value, {
         subtree: true,
@@ -132,6 +235,7 @@ export const VisualLinker = defineComponent({
         // field neither sets falls through to @macrulez/visual-linker-core's own default.
         const created = createVisualLinker(el, effectiveConfig())
         created.setConnections(props.connections)
+        connectionsSync.reset(props.connections)
         // After the connections: an id not (yet) in them would be pruned from the selection.
         if (props.selected) created.setSelectedConnections(props.selected)
         unsubscribes = [
@@ -148,6 +252,9 @@ export const VisualLinker = defineComponent({
           created.on('block:dragend', (payload) => emit('block-dragend', payload)),
           created.on('block:mouseenter', (payload) => emit('block-mouseenter', payload)),
           created.on('block:mouseleave', (payload) => emit('block-mouseleave', payload)),
+          created.on('connect:start', (payload) => emit('connect-start', payload)),
+          created.on('connection:create-request', (payload) => emit('connection-create-request', payload)),
+          created.on('connection:create-cancel', (payload) => emit('connection-create-cancel', payload)),
           // Drives the overlay slots below — fires on every render, so overlay
           // positions follow drag/resize/scroll exactly like the SVG paths do.
           created.on('layout', ({ connections: layouts, ports }) => {
@@ -168,10 +275,9 @@ export const VisualLinker = defineComponent({
         void scanTick.value
         const current = engine.value
         if (!current || !root.value) return
-        const next = collectBlocks({ root: root.value, page: props.scope === 'page', name: props.name }, props.blocks)
-        if (sameBlocks(next, lastBlocks)) return
-        lastBlocks = next
-        current.setBlocks(next)
+        const next = currentRegistry()?.fullScan()
+        if (next) applyBlocks(next)
+        void current
       },
       { flush: 'post' },
     )
@@ -187,10 +293,27 @@ export const VisualLinker = defineComponent({
     )
 
     watch(
-      () => props.connections,
-      (next) => engine.value?.setConnections(next),
-      { deep: true },
+      () => connectionsSignature(props.connections),
+      () => connectionsSync.sync(props.connections),
+      { flush: 'pre' },
     )
+    watch(
+      () => props.connections,
+      () => connectionsSync.sync(props.connections),
+    )
+
+    expose({
+      engine,
+      startConnect: (from: ConnectionEndpoint) => engine.value?.startConnect(from) ?? false,
+      completeConnect: (to: ConnectionEndpoint) => engine.value?.completeConnect(to) ?? false,
+      cancelConnect: (reason?: ConnectCancelReason) => engine.value?.cancelConnect(reason),
+      isConnecting: () => engine.value?.isConnecting() ?? { active: false },
+      batch: (fn: () => void) => (engine.value ? engine.value.batch(fn) : fn()),
+      stats: () => ({
+        ...(engine.value?.getStats() ?? emptyStats()),
+        registryRecomputations: registry?.recomputations ?? 0,
+      }),
+    })
 
     onBeforeUnmount(() => {
       observer?.disconnect()

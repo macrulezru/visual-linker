@@ -9,6 +9,8 @@ import LiveControlsScene from './scenes/LiveControlsScene.vue'
 import FreePlacementScene from './scenes/FreePlacementScene.vue'
 import ThemesScene from './scenes/ThemesScene.vue'
 import RecipesScene from './scenes/RecipesScene.vue'
+import ConnectScene from './scenes/ConnectScene.vue'
+import MappingScene from './scenes/MappingScene.vue'
 
 const tabs = [
   { id: 'overview', label: 'Overview', component: OverviewScene },
@@ -19,6 +21,8 @@ const tabs = [
   { id: 'markers', label: 'Markers & overlays', component: MarkersScene },
   { id: 'themes', label: 'Themes & states', component: ThemesScene },
   { id: 'live', label: 'Live controls', component: LiveControlsScene },
+  { id: 'connect', label: 'Connect', component: ConnectScene },
+  { id: 'mapping', label: 'Mapping', component: MappingScene },
   { id: 'recipes', label: 'Recipes', component: RecipesScene },
 ] as const
 

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>visual-linker bench</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          13px/1.4 system-ui,
+          sans-serif;
+      }
+      #controls {
+        padding: 8px 12px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        border-bottom: 1px solid #ddd;
+      }
+      #stage {
+        position: relative;
+        display: flex;
+        gap: 360px;
+        padding: 24px;
+        width: 1000px;
+      }
+      .col {
+        width: 260px;
+        height: 560px;
+        overflow: auto;
+        border: 1px solid #bbb;
+      }
+      .row {
+        height: 28px;
+        box-sizing: border-box;
+        padding: 4px 8px;
+        border-bottom: 1px solid #eee;
+        background: #fafafa;
+      }
+      .row.group {
+        background: #eef3ff;
+      }
+      .row.hidden {
+        display: none;
+      }
+      #output {
+        padding: 8px 12px;
+        font-family: monospace;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      blocks <input id="blocks" value="100" size="5" /> connections <input id="connections" value="100" size="5" />
+      <button id="build">build</button>
+      <button id="render">re-render x50</button>
+      <button id="drag">drag 1s</button>
+      <button id="scroll">scroll 1s</button>
+      <button id="toggle">toggle 50 nodes</button>
+    </div>
+    <div id="stage"></div>
+    <div id="output"></div>
+    <script type="module" src="/src/bench/bench.ts"></script>
+  </body>
+</html>
