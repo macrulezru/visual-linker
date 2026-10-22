@@ -49,6 +49,17 @@ function segmentsOf(paths: readonly JumpPath[]) {
   return { horizontal, vertical }
 }
 
+function firstAtLeast(sorted: readonly Segment[], value: number): number {
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (sorted[mid]!.at < value) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
 /**
  * Where each hopping path crosses someone else's vertical segment: a map from
  * path id to `segment index → x coordinates to hop at`. The horizontal
@@ -62,6 +73,7 @@ function segmentsOf(paths: readonly JumpPath[]) {
 export function findJumps(paths: readonly JumpPath[]): Map<string, Map<number, number[]>> {
   const result = new Map<string, Map<number, number[]>>()
   const { horizontal, vertical } = segmentsOf(paths)
+  vertical.sort((a, b) => a.at - b.at)
 
   for (const h of horizontal) {
     const path = paths[h.pathIndex]!
@@ -70,10 +82,13 @@ export function findJumps(paths: readonly JumpPath[]): Map<string, Map<number, n
     const room = radius + path.cornerRadius + CLEARANCE
 
     const xs: number[] = []
-    for (const v of vertical) {
+    const low = h.from + room
+    const high = h.to - room
+    for (let k = firstAtLeast(vertical, low); k < vertical.length; k++) {
+      const v = vertical[k]!
+      if (v.at > high) break
       if (v.pathIndex === h.pathIndex) continue
       const other = paths[v.pathIndex]!
-      if (v.at < h.from + room || v.at > h.to - room) continue
       if (h.at < v.from + other.cornerRadius + CLEARANCE || h.at > v.to - other.cornerRadius - CLEARANCE) continue
       xs.push(v.at)
     }

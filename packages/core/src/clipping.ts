@@ -46,11 +46,14 @@ export function clippingAncestors(el: HTMLElement, stopAt: HTMLElement): Clippin
 }
 
 /** The part of the viewport still showing through every clipping ancestor, or `null` when nothing clips. */
-export function visibleRect(chain: readonly ClippingAncestor[]): ClipRect | null {
+export function visibleRect(
+  chain: readonly ClippingAncestor[],
+  measure: (el: HTMLElement) => ClipRect = (el) => el.getBoundingClientRect(),
+): ClipRect | null {
   if (chain.length === 0) return null
   const rect: ClipRect = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity }
   for (const { el, x, y } of chain) {
-    const box = el.getBoundingClientRect()
+    const box = measure(el)
     if (x) {
       rect.left = Math.max(rect.left, box.left)
       rect.right = Math.min(rect.right, box.right)

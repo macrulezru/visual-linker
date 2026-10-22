@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>visual-linker connect stand</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      #stage {
+        position: relative;
+        width: 760px;
+        height: 360px;
+        margin: 20px;
+      }
+      .block {
+        position: absolute;
+        top: 20px;
+        width: 200px;
+        border: 1px solid #999;
+        background: #fafafa;
+      }
+      #src {
+        left: 0;
+      }
+      #dst {
+        left: 500px;
+      }
+      .port {
+        height: 32px;
+        box-sizing: border-box;
+        padding: 6px 10px;
+        border-top: 1px solid #ddd;
+      }
+      .port[data-vl-connect-state='candidate'] {
+        background: #e6f6ee;
+      }
+      .port[data-vl-connect-state='source'] {
+        background: #e0e7ff;
+      }
+      .port:focus-visible {
+        outline: 2px solid #1f6feb;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="src" class="block">
+        <div class="port" id="p1">p1</div>
+        <div class="port" id="p2">p2</div>
+        <div class="port" id="p3">p3</div>
+      </div>
+      <div id="dst" class="block">
+        <div class="port" id="q1">q1</div>
+        <div class="port" id="q2">q2</div>
+        <div class="port" id="q3">q3</div>
+      </div>
+    </div>
+    <script type="module" src="/src/connect-stand/stand.ts"></script>
+  </body>
+</html>

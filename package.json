@@ -1,7 +1,7 @@
 {
   "name": "visual-linker",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.4.5",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
@@ -15,10 +15,13 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:browser": "playwright test",
+    "test:perf": "playwright test -c playwright.perf.config.ts && node scripts/perf-report.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.11.0",

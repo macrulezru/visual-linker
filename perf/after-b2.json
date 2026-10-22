@@ -1,0 +1,71 @@
+{
+  "rows": [
+    {
+      "id": "render-100",
+      "title": "100 blocks, 100 connections: one render() pass",
+      "metrics": {
+        "renderMedianMs": 0.7000000476837158,
+        "renderP95Ms": 1.1999999284744263,
+        "domNodes": 203,
+        "firstMs": 19.40000009536743,
+        "memoryMb": 6.442802429199219
+      }
+    },
+    {
+      "id": "render-300",
+      "title": "300 blocks, 300 connections: one render() pass",
+      "metrics": {
+        "renderMedianMs": 2.100000023841858,
+        "renderP95Ms": 2.700000047683716,
+        "domNodes": 603,
+        "firstMs": 27,
+        "toggle50Ms": 3.299999952316284,
+        "memoryMb": 9.312029838562012
+      }
+    },
+    {
+      "id": "drag-300",
+      "title": "Drag a block with 20 connections among 300 blocks",
+      "metrics": {
+        "fps": 59.96264621617137
+      }
+    },
+    {
+      "id": "scroll-200",
+      "title": "Scroll columns of 200 blocks each with 100 connections",
+      "metrics": {
+        "fps": 60.963421945379295
+      }
+    },
+    {
+      "id": "first-1000",
+      "title": "First render: 1000 blocks, 500 connections",
+      "metrics": {
+        "firstMs": 38.299999952316284,
+        "domNodes": 1003,
+        "memoryMb": 6.109402656555176
+      }
+    },
+    {
+      "id": "render-heavy-100",
+      "title": "Heavy styling (smoothstep, obstacle routing, jumps, labels, markers, spread ports), 100 blocks, 100 connections",
+      "metrics": {
+        "renderMedianMs": 2.100000023841858,
+        "renderP95Ms": 2.5,
+        "domNodes": 542,
+        "firstMs": 95.20000004768372
+      }
+    },
+    {
+      "id": "heavy-300",
+      "title": "Heavy styling, 300 blocks, 300 connections: render pass and block drag",
+      "metrics": {
+        "renderMedianMs": 7.899999976158142,
+        "renderP95Ms": 8.5,
+        "fps": 19.94112619839005,
+        "domNodes": 1548,
+        "firstMs": 255
+      }
+    }
+  ]
+}

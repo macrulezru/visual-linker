@@ -1,5 +1,5 @@
 export { createVisualLinker } from './visual-linker'
-export type { VisualLinker } from './visual-linker'
+export type { VisualLinker, VisualLinkerStats } from './visual-linker'
 
 export { VLConnectionCurveEnum, VLMarkerShapeEnum, VLFixedSideEnum, VLOrientEnum } from './enums'
 
@@ -50,6 +50,20 @@ export type {
   PortSpread,
   PortSpreadOptions,
   DragBoundsInset,
+  ConnectRole,
+  ConnectMode,
+  ConnectOrigin,
+  ConnectHandleVisibility,
+  ConnectVia,
+  ConnectCancelReason,
+  ConnectMessage,
+  ConnectMessageContext,
+  ConnectMessages,
+  ConnectConfig,
+  ConnectPortState,
+  ConnectPortStates,
+  ConnectionEndpointRef,
+  PerformanceConfig,
 } from './types'
 
 export type { Point } from './geometry'

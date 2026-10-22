@@ -38,7 +38,7 @@ function applyBlock(el: HTMLElement, value: BlockDirectiveValue, oldValue?: Bloc
   el.setAttribute(VL_ATTR.block, options.id)
   setOptionalAttribute(el, VL_ATTR.linker, options.linker, previous?.linker)
   blockDirectiveOptions.set(el, options)
-  notifyScopes()
+  notifyScopes({ el, kind: 'block', op: 'update' })
 }
 
 function applyPort(el: HTMLElement, value: PortDirectiveValue, oldValue?: PortDirectiveValue | null) {
@@ -48,7 +48,7 @@ function applyPort(el: HTMLElement, value: PortDirectiveValue, oldValue?: PortDi
   setOptionalAttribute(el, VL_ATTR.portBlock, options.block, previous?.block)
   setOptionalAttribute(el, VL_ATTR.linker, options.linker, previous?.linker)
   portDirectiveOptions.set(el, options)
-  notifyScopes()
+  notifyScopes({ el, kind: 'port', op: 'update' })
 }
 
 /**
@@ -61,7 +61,7 @@ export const vVlBlock: ObjectDirective<HTMLElement, BlockDirectiveValue> = {
   updated: (el, { value, oldValue }) => applyBlock(el, value, oldValue),
   unmounted(el) {
     blockDirectiveOptions.delete(el)
-    notifyScopes()
+    notifyScopes({ el, kind: 'block', op: 'remove' })
   },
   getSSRProps: ({ value }) => blockSsrAttributes(normalize<BlockDirectiveOptions>(value)),
 }
@@ -76,7 +76,7 @@ export const vVlPort: ObjectDirective<HTMLElement, PortDirectiveValue> = {
   updated: (el, { value, oldValue }) => applyPort(el, value, oldValue),
   unmounted(el) {
     portDirectiveOptions.delete(el)
-    notifyScopes()
+    notifyScopes({ el, kind: 'port', op: 'remove' })
   },
   getSSRProps: ({ value }) => portSsrAttributes(normalize<PortDirectiveOptions>(value)),
 }

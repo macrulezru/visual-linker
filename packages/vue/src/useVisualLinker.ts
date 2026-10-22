@@ -1,13 +1,17 @@
 import { onBeforeUnmount, onMounted, shallowRef, toValue, watch, watchEffect, type MaybeRefOrGetter } from 'vue'
 import {
   createVisualLinker,
+  type ConnectCancelReason,
   type ConnectionDescriptor,
+  type ConnectionEndpoint,
   type VisualLinker,
+  type VisualLinkerStats,
   mergeConfig,
   type VisualLinkerConfig,
 } from '@macrulez/visual-linker-core'
 import { injectSharedConfig } from './sharedConfig'
 import { resolveBlocksForCore, type RefFriendlyBlock } from './refPorts'
+import { connectionsSignature, createConnectionsSync } from './connectionsSync'
 
 export interface UseVisualLinkerOptions {
   config?: MaybeRefOrGetter<VisualLinkerConfig | undefined>
@@ -17,6 +21,23 @@ export interface UseVisualLinkerOptions {
 
 export interface UseVisualLinkerReturn {
   engine: ReturnType<typeof shallowRef<VisualLinker | null>>
+  stats: () => VisualLinkerStats
+  startConnect: (from: ConnectionEndpoint) => boolean
+  completeConnect: (to: ConnectionEndpoint) => boolean
+  cancelConnect: (reason?: ConnectCancelReason) => void
+  isConnecting: () => { active: boolean; from?: ConnectionEndpoint }
+  batch: (fn: () => void) => void
+}
+
+const EMPTY_STATS: VisualLinkerStats = {
+  blocks: 0,
+  connections: 0,
+  rendered: 0,
+  culled: 0,
+  proxied: 0,
+  lastRenderMs: 0,
+  medianRenderMs: 0,
+  observedElements: 0,
 }
 
 /**
@@ -31,6 +52,7 @@ export function useVisualLinker(
   const engine = shallowRef<VisualLinker | null>(null)
   const shared = injectSharedConfig()
   const effectiveConfig = () => mergeConfig<VisualLinkerConfig>(shared, toValue(options.config))
+  const connectionsSync = createConnectionsSync(() => engine.value)
   let stopSyncBlocks: (() => void) | null = null
 
   onMounted(() => {
@@ -52,7 +74,11 @@ export function useVisualLinker(
         createdEngine.setBlocks(resolveBlocksForCore(toValue(options.blocks) ?? []))
       })
     }
-    if (options.connections) createdEngine.setConnections(toValue(options.connections) ?? [])
+    if (options.connections) {
+      const initial = toValue(options.connections) ?? []
+      createdEngine.setConnections(initial)
+      connectionsSync.reset(initial)
+    }
   })
 
   onBeforeUnmount(() => {
@@ -65,11 +91,22 @@ export function useVisualLinker(
 
   if (options.connections) {
     watch(
+      () => connectionsSignature(toValue(options.connections) ?? []),
+      () => connectionsSync.sync(toValue(options.connections) ?? []),
+    )
+    watch(
       () => toValue(options.connections),
-      (next) => engine.value?.setConnections(next ?? []),
-      { deep: true },
+      (next) => connectionsSync.sync(next ?? []),
     )
   }
 
-  return { engine }
+  return {
+    engine,
+    stats: () => engine.value?.getStats() ?? { ...EMPTY_STATS },
+    startConnect: (from) => engine.value?.startConnect(from) ?? false,
+    completeConnect: (to) => engine.value?.completeConnect(to) ?? false,
+    cancelConnect: (reason) => engine.value?.cancelConnect(reason),
+    isConnecting: () => engine.value?.isConnecting() ?? { active: false },
+    batch: (fn) => (engine.value ? engine.value.batch(fn) : fn()),
+  }
 }

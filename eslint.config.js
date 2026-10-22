@@ -13,7 +13,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   {
-    files: ['**/*.{ts,vue}'],
+    files: ['**/*.{ts,vue,mjs}'],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

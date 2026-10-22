@@ -11,15 +11,16 @@ import type {
 import { DEFAULT_LINE_COLOR } from './params'
 
 export interface ActiveStates {
+  proxied: boolean
   highlight: boolean
   hover: boolean
   selected: boolean
   focus: boolean
 }
 
-export const NO_STATES: ActiveStates = { highlight: false, hover: false, selected: false, focus: false }
+export const NO_STATES: ActiveStates = { proxied: false, highlight: false, hover: false, selected: false, focus: false }
 
-const STATE_KEYS: readonly VisualState[] = ['selected', 'highlight', 'hover', 'focus']
+const STATE_KEYS: readonly VisualState[] = ['proxied', 'selected', 'highlight', 'hover', 'focus']
 
 type PlainObject = Record<string, unknown>
 
