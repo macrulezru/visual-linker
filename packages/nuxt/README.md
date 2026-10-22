@@ -15,7 +15,7 @@ monorepo.
 
 ## Features
 
-- **Auto-imports `<VisualLinker>` and `useVisualLinker`** — registered/imported from `@macrulez/visual-linker-vue`, no explicit `import` anywhere in your app
+- **Auto-imports `<VisualLinker>`, `useVisualLinker` and `useVisualLinkerConnect`** — registered/imported from `@macrulez/visual-linker-vue`, no explicit `import` anywhere in your app
 - **Registers `v-vl-block` / `v-vl-port` globally** — on the server too, so the `data-vl-*` discovery attributes are already in the server-rendered HTML
 - **The whole configuration, set once** — `visualLinker` in `nuxt.config.ts` takes the same structure as the engine (`theme`, `lines`, `markers`, `ports`, `labels`, `blocks`, `interaction`, `performance`), applied to every diagram
 - **The configuration is shared through Vue's `provide`** — one reactive object per app, which `useVisualLinkerConfig()` exposes for runtime changes (a theme switch re-styles every diagram)
@@ -75,7 +75,7 @@ for the full component/composable API.
 
 #### What the module does
 
-1. **Auto-imports** `<VisualLinker>` as a global component and `useVisualLinker` as an auto-import, both sourced from `@macrulez/visual-linker-vue` — no explicit `import` needed in your components.
+1. **Auto-imports** `<VisualLinker>` as a global component and `useVisualLinker` / `useVisualLinkerConnect` as auto-imports, all sourced from `@macrulez/visual-linker-vue` — no explicit `import` needed in your components.
 2. **Forwards module options** into `runtimeConfig.public.visualLinker`.
 3. **Registers one universal plugin** (`runtime/plugin.ts`): the `v-vl-block` / `v-vl-port` directives — on the server too, so the `data-vl-*` attributes are already in the SSR markup — and the app-wide shared config, taken from that runtime config. Every `<VisualLinker>`/`useVisualLinker()` merges it under its own `config`, and `useVisualLinkerConfig()` (from `@macrulez/visual-linker-vue`) hands you the same reactive object to change at runtime, e.g. to switch the theme.
 

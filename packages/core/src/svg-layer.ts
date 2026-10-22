@@ -1,4 +1,12 @@
-import type { ConnectionEndpoint, ConnectionStyle, ConnectPortState, MarkerStyle, VisualLinkerConfig } from './types'
+import type {
+  ConnectionEndpoint,
+  ConnectionStyle,
+  ConnectPortRole,
+  ConnectPortState,
+  MarkerStyle,
+  PortStyle,
+  VisualLinkerConfig,
+} from './types'
 import {
   baseOf,
   layered,
@@ -11,7 +19,7 @@ import {
 } from './config'
 import { flowStrokeWidth, resolveFlow } from './flow'
 import type { Point } from './geometry'
-import { createMarkerElement, markerSignature, resolveMarkerConfig } from './markers'
+import { createMarkerElement, markerSignature, resolveMarkerConfig, type ResolvedMarker } from './markers'
 import { themeVariables } from './theme'
 import {
   ACTIVE_LINE_WIDTH_BUMP,
@@ -48,6 +56,9 @@ export interface SvgPathInput {
   ariaLabel?: string
   styleKey?: string
   proxied?: boolean
+  kind?: string
+  proxiedStart?: boolean
+  proxiedEnd?: boolean
 }
 
 export interface SvgHandleInput {
@@ -57,6 +68,8 @@ export interface SvgHandleInput {
   radius: number
   state: ConnectPortState | null
   visible: boolean
+  covered?: boolean
+  opacity?: number
 }
 
 export interface SvgLabelInput {
@@ -72,6 +85,13 @@ export interface SvgPortInput {
   key: string
   point: Point
   connectionIds: string[]
+  ends?: ('start' | 'end')[]
+  role?: ConnectPortRole
+  connected?: number
+  state?: ConnectPortState | null
+  className?: string
+  style?: PortStyle
+  opacity?: number
 }
 
 export interface SvgLayerHandlers {
@@ -114,6 +134,7 @@ const CONNECT_STYLE = `
   .vl-connect-preview { fill: none; stroke: var(--vl-connect-preview-color, ${DEFAULT_SELECTION_COLOR}); stroke-width: var(--vl-line-width, ${DEFAULT_LINE_WIDTH}); stroke-dasharray: ${DASH_PATTERN}; opacity: 0.8; pointer-events: none; }
   .vl-connect-preview--valid { stroke: var(--vl-connect-valid-color, ${DEFAULT_LINE_COLOR}); }
   .vl-connect-preview--invalid { stroke: var(--vl-connect-invalid-color, #d64545); }
+  .vl-svg--dim .vl-connection, .vl-svg--dim .vl-flow { opacity: var(--vl-connect-dim, 0.35); }
   .vl-live { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
 `
 
@@ -191,6 +212,9 @@ export function createSvgLayer(
   const lastD = new Map<string, string>()
   const appearanceKeys = new Map<string, string>()
   const connectionMarkers = new Map<string, string[]>()
+  const kinds = new Map<string, string | undefined>()
+  const proxiedEnds = new Map<string, { start: boolean; end: boolean }>()
+  const rings = new Map<string, { start: ResolvedMarker | null; end: ResolvedMarker | null }>()
   const handleEls = new Map<string, { group: SVGGElement; hit: SVGCircleElement; dot: SVGCircleElement }>()
   const handleKeys = new Map<string, string>()
   const textSizes = new Map<string, { width: number; height: number }>()
@@ -262,8 +286,10 @@ export function createSvgLayer(
     fallbackColor: string,
     fallbackOpacity: number | undefined,
     used: string[],
+    ring: { start: ResolvedMarker | null; end: ResolvedMarker | null },
   ): string | null {
     const resolved = resolveMarkerConfig(input, fallbackColor, config().markers?.sizes ?? {}, fallbackOpacity)
+    ring[position] = resolved
     if (!resolved) return null
     const signature = markerSignature(position, resolved)
     used.push(signature)
@@ -278,7 +304,7 @@ export function createSvgLayer(
 
   function applyConnectionAppearance(id: string, el: SVGPathElement, hidden: { start: boolean; end: boolean }) {
     const own = styles.get(id)
-    const view = resolveLines(config().lines, own)
+    const view = resolveLines(config().lines, own, kinds.get(id))
     const active = statesFor(id)
     const stateFields = statesOf(view, active)
     const base = baseOf(view)
@@ -296,16 +322,22 @@ export function createSvgLayer(
     const fallbackColor = color ?? themeLineColor(config().theme, active)
     const markerIds: Record<'start' | 'end', string | null> = { start: null, end: null }
     const used: string[] = []
+    const ring: { start: ResolvedMarker | null; end: ResolvedMarker | null } = { start: null, end: null }
+    const proxiedAt = proxiedEnds.get(id)
     for (const position of ['start', 'end'] as const) {
-      const merged = mergeMarkerInputs(config().markers?.[position], own?.markers?.[position])
+      let merged = mergeMarkerInputs(config().markers?.[position], own?.markers?.[position])
+      const onProxied = proxiedAt?.[position] ? view.proxied?.[position] : undefined
+      if (onProxied !== undefined) merged = mergeMarkerInputs(merged, onProxied)
       markerIds[position] = ensureMarker(
         position,
         merged ? layered(merged, active) : merged,
         fallbackColor,
         opacity,
         used,
+        ring,
       )
     }
+    rings.set(id, ring)
     connectionMarkers.set(id, used)
     el.style.markerStart = markerIds.start && !hidden.start ? `url(#${markerIds.start})` : ''
     el.style.markerEnd = markerIds.end && !hidden.end ? `url(#${markerIds.end})` : ''
@@ -400,13 +432,66 @@ export function createSvgLayer(
     }
   }
 
+  function portStyleOf(input: SvgPortInput | undefined, active: ActiveStates): PortStyle {
+    const ports = config().ports
+    let style: PortStyle = layered(ports, active)
+    if (!input) return style
+    if (input.role === 'source' || input.role === 'target') {
+      style = { ...style, ...layered(ports?.[input.role], active) }
+    }
+    if (input.connected && ports?.connected) style = { ...style, ...ports.connected }
+    if (input.style) style = { ...style, ...input.style }
+    if (ports?.sync === 'marker' && input.ends && input.connectionIds.length > 0) {
+      const marker = rings.get(input.connectionIds[0]!)?.[input.ends[0] ?? 'end']
+      if (marker) {
+        style = {
+          ...style,
+          ...(marker.strokeColor ? { stroke: marker.strokeColor, strokeWidth: marker.strokeWidth } : {}),
+          ...(marker.opacity !== undefined ? { opacity: marker.opacity } : {}),
+        }
+      }
+    }
+    if (input.state) style = { ...style, ...ports?.connect?.[input.state] }
+    if (input.opacity !== undefined && input.opacity < 1)
+      style = { ...style, opacity: (style.opacity ?? 1) * input.opacity }
+    return style
+  }
+
   function paintPort(key: string, el: SVGCircleElement) {
     const input = portInputs.get(key)
     const active = statesForAny(input?.connectionIds ?? [])
-    const paintKey = `${configVersion}|${stateBits(active)}`
+    const portStyle = portStyleOf(input, active)
+    const extras = input
+      ? [
+          input.role ?? '',
+          input.connected ? 1 : 0,
+          input.state ?? '',
+          input.className ?? '',
+          input.opacity ?? '',
+          portStyle.radius ?? '',
+          portStyle.fill ?? '',
+          portStyle.stroke ?? '',
+          portStyle.strokeWidth ?? '',
+          portStyle.opacity ?? '',
+        ].join(',')
+      : ''
+    const paintKey = `${configVersion}|${stateBits(active)}|${extras}`
     if (portPaintKeys.get(key) === paintKey) return
     portPaintKeys.set(key, paintKey)
-    const portStyle = layered(config().ports, active)
+    if (input && (input.role || input.connected || input.className || input.state)) {
+      el.setAttribute(
+        'class',
+        [
+          'vl-port',
+          input.role ? `vl-port--${input.role}` : '',
+          input.connected ? 'vl-port--connected' : '',
+          input.state ? `vl-port--${input.state}` : '',
+          input.className ?? '',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      )
+    }
     setStyle(el, 'r', portStyle.radius != null ? `${portStyle.radius}px` : undefined)
     setStyle(el, 'fill', portStyle.fill)
     setStyle(el, 'stroke', portStyle.stroke)
@@ -499,6 +584,9 @@ export function createSvgLayer(
       hoverableFlags.get(id) ?? '',
       selectable() ? 1 : 0,
       ariaLabels.get(id) ?? '',
+      kinds.get(id) ?? '',
+      proxiedEnds.get(id)?.start ? 1 : 0,
+      proxiedEnds.get(id)?.end ? 1 : 0,
     ].join('|')
     if (appearanceKeys.get(id) === key) return false
     appearanceKeys.set(id, key)
@@ -598,6 +686,34 @@ export function createSvgLayer(
     lastD.delete(id)
     appearanceKeys.delete(id)
     connectionMarkers.delete(id)
+    kinds.delete(id)
+    proxiedEnds.delete(id)
+    rings.delete(id)
+  }
+
+  function syncPorts(nextPorts: SvgPortInput[]) {
+    const nextPortKeys = new Set(nextPorts.map((port) => port.key))
+    for (const [key, el] of ports) {
+      if (!nextPortKeys.has(key)) {
+        el.remove()
+        ports.delete(key)
+        portInputs.delete(key)
+        portPaintKeys.delete(key)
+      }
+    }
+    for (const input of nextPorts) {
+      portInputs.set(input.key, input)
+      let el = ports.get(input.key)
+      if (!el) {
+        el = document.createElementNS(SVG_NS, 'circle')
+        el.setAttribute('class', 'vl-port')
+        svg.insertBefore(el, labelsLayer)
+        ports.set(input.key, el)
+      }
+      el.setAttribute('cx', String(input.point.x))
+      el.setAttribute('cy', String(input.point.y))
+      paintPort(input.key, el)
+    }
   }
 
   function update(nextPaths: SvgPathInput[], nextPorts: SvgPortInput[], nextLabels: SvgLabelInput[] = []): number {
@@ -619,6 +735,12 @@ export function createSvgLayer(
       if (input.ariaLabel) ariaLabels.set(input.id, input.ariaLabel)
       if (input.proxied) proxiedIds.add(input.id)
       else proxiedIds.delete(input.id)
+      kinds.set(input.id, input.kind)
+      if (input.proxiedStart || input.proxiedEnd) {
+        proxiedEnds.set(input.id, { start: Boolean(input.proxiedStart), end: Boolean(input.proxiedEnd) })
+      } else {
+        proxiedEnds.delete(input.id)
+      }
     }
     pruneHovered()
     const activeKeys = activeEndpointKeys()
@@ -647,28 +769,7 @@ export function createSvgLayer(
       }
     }
 
-    const nextPortKeys = new Set(nextPorts.map((port) => port.key))
-    for (const [key, el] of ports) {
-      if (!nextPortKeys.has(key)) {
-        el.remove()
-        ports.delete(key)
-        portInputs.delete(key)
-        portPaintKeys.delete(key)
-      }
-    }
-    for (const input of nextPorts) {
-      portInputs.set(input.key, input)
-      let el = ports.get(input.key)
-      if (!el) {
-        el = document.createElementNS(SVG_NS, 'circle')
-        el.setAttribute('class', 'vl-port')
-        svg.insertBefore(el, labelsLayer)
-        ports.set(input.key, el)
-      }
-      el.setAttribute('cx', String(input.point.x))
-      el.setAttribute('cy', String(input.point.y))
-      paintPort(input.key, el)
-    }
+    syncPorts(nextPorts)
 
     updateLabels(nextLabels)
     return drawnLastUpdate
@@ -720,6 +821,7 @@ export function createSvgLayer(
     setStyle(dot, 'stroke', stateStyle?.stroke)
     setStyle(dot, 'stroke-width', stateStyle?.strokeWidth)
     setStyle(dot, 'opacity', stateStyle?.opacity)
+    setStyle(dot, 'display', input.covered ? 'none' : undefined)
   }
 
   function handleClass(input: SvgHandleInput): string {
@@ -733,9 +835,16 @@ export function createSvgLayer(
   }
 
   function handleKey(input: SvgHandleInput): string {
-    return [configVersion, input.point.x, input.point.y, input.radius, input.state ?? '', input.visible ? 1 : 0].join(
-      '|',
-    )
+    return [
+      configVersion,
+      input.point.x,
+      input.point.y,
+      input.radius,
+      input.state ?? '',
+      input.visible ? 1 : 0,
+      input.covered ? 1 : 0,
+      input.opacity ?? '',
+    ].join('|')
   }
 
   function setHandles(inputs: SvgHandleInput[]) {
@@ -774,6 +883,7 @@ export function createSvgLayer(
       handleKeys.set(input.key, nextKey)
       els.group.setAttribute('transform', `translate(${input.point.x} ${input.point.y})`)
       els.hit.setAttribute('r', String(input.radius))
+      setStyle(els.group, 'opacity', input.opacity !== undefined && input.opacity < 1 ? input.opacity : undefined)
       paintHandleDot(els.dot, input)
     }
   }
@@ -808,6 +918,15 @@ export function createSvgLayer(
 
   function stylePreview(apply: (el: SVGPathElement) => void) {
     if (previewPath) apply(previewPath)
+  }
+
+  function setDim(value: number | null) {
+    svg.classList.toggle('vl-svg--dim', value !== null)
+    if (value === null) svg.style.removeProperty('--vl-connect-dim')
+    else {
+      ensureConnectStyle()
+      svg.style.setProperty('--vl-connect-dim', String(value))
+    }
   }
 
   function announce(text: string) {
@@ -850,6 +969,9 @@ export function createSvgLayer(
     lastD.clear()
     appearanceKeys.clear()
     connectionMarkers.clear()
+    kinds.clear()
+    proxiedEnds.clear()
+    rings.clear()
     handleEls.clear()
     handleKeys.clear()
     handleInputs.clear()
@@ -861,6 +983,7 @@ export function createSvgLayer(
   return {
     resize,
     update,
+    syncPorts,
     applyConfig,
     setHoveredConnections,
     setHighlightedConnections,
@@ -869,6 +992,7 @@ export function createSvgLayer(
     clearHandles,
     setPreview,
     stylePreview,
+    setDim,
     announce,
     removeLiveRegion,
     contains: (node: Node) => svg.contains(node),

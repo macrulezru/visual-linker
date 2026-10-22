@@ -1,5 +1,5 @@
 import { createVisualLinker } from '@macrulez/visual-linker-vue'
-import type { ConnectConfig, ConnectionDescriptor } from '@macrulez/visual-linker-vue'
+import type { ConnectConfig, ConnectionDescriptor, VisualLinkerConfig } from '@macrulez/visual-linker-vue'
 
 type Engine = ReturnType<typeof createVisualLinker>
 
@@ -14,12 +14,17 @@ let engine: Engine | null = null
 let lastPointerId = 1
 document.addEventListener('pointerdown', (event) => (lastPointerId = event.pointerId), true)
 
-function setup(options: ConnectConfig & { reject?: string } = {}, connections: ConnectionDescriptor[] = []) {
+function setup(
+  options: ConnectConfig & { reject?: string } = {},
+  connections: ConnectionDescriptor[] = [],
+  extra: VisualLinkerConfig = {},
+) {
   const { reject, ...connect } = options
   engine?.destroy()
   events.length = 0
   engine = createVisualLinker(stage, {
-    ports: { show: false },
+    ...extra,
+    ports: { show: false, ...extra.ports },
     interaction: {
       connect: { enabled: true, handle: 'always', ...connect, ...(reject ? { validate: () => reject } : {}) },
     },
@@ -56,8 +61,12 @@ function leftovers() {
   }
 }
 
+const clicks = { count: 0 }
+document.getElementById('btn')!.addEventListener('click', () => clicks.count++)
+
 const api = {
   setup,
+  clicks,
   events,
   handleCenter,
   leftovers,

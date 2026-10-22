@@ -11,6 +11,7 @@ import ThemesScene from './scenes/ThemesScene.vue'
 import RecipesScene from './scenes/RecipesScene.vue'
 import ConnectScene from './scenes/ConnectScene.vue'
 import MappingScene from './scenes/MappingScene.vue'
+import FieldsScene from './scenes/FieldsScene.vue'
 
 const tabs = [
   { id: 'overview', label: 'Overview', component: OverviewScene },
@@ -23,6 +24,7 @@ const tabs = [
   { id: 'live', label: 'Live controls', component: LiveControlsScene },
   { id: 'connect', label: 'Connect', component: ConnectScene },
   { id: 'mapping', label: 'Mapping', component: MappingScene },
+  { id: 'fields', label: 'Fields', component: FieldsScene },
   { id: 'recipes', label: 'Recipes', component: RecipesScene },
 ] as const
 

@@ -57,6 +57,7 @@ describe('@macrulez/visual-linker-nuxt module', () => {
     visualLinkerModule({}, nuxt)
 
     expect(addImports).toHaveBeenCalledWith({ name: 'useVisualLinker', from: '@macrulez/visual-linker-vue' })
+    expect(addImports).toHaveBeenCalledWith({ name: 'useVisualLinkerConnect', from: '@macrulez/visual-linker-vue' })
   })
 
   it('registers one universal plugin: the directives and the shared configuration', async () => {

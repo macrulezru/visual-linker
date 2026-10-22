@@ -27,6 +27,7 @@ export interface ResolvedMarker {
   strokeWidth: number
   opacity?: number
   className?: string
+  units?: 'px'
   svg?: string
   orient: `${VLOrientEnum.AUTO | VLOrientEnum.FIXED}`
   arrow?: { color: string; gap: number }
@@ -83,6 +84,7 @@ export function resolveMarkerConfig(
     strokeWidth: config.strokeWidth ?? DEFAULT_MARKER_STROKE_WIDTH,
     opacity: config.opacity ?? fallbackOpacity,
     className: config.className,
+    units: config.units === 'px' ? 'px' : undefined,
     svg: config.svg,
     // The arrow has to follow the line, so a shape carrying one rotates with it too.
     orient: arrow
@@ -106,6 +108,7 @@ export function markerSignature(position: 'start' | 'end', marker: ResolvedMarke
     marker.svg ?? '',
     marker.orient,
     marker.arrow ? `${marker.arrow.color}:${marker.arrow.gap}` : '',
+    marker.units ?? '',
   ].join('|')
 }
 
@@ -196,7 +199,7 @@ export function createMarkerElement(id: string, position: 'start' | 'end', marke
   el.setAttribute('viewBox', `${minX} 0 ${viewWidth} ${MARKER_VIEWBOX}`)
   el.setAttribute('markerWidth', String((marker.size * viewWidth) / MARKER_VIEWBOX))
   el.setAttribute('markerHeight', String(marker.size))
-  el.setAttribute('markerUnits', 'strokeWidth')
+  el.setAttribute('markerUnits', marker.units === 'px' ? 'userSpaceOnUse' : 'strokeWidth')
   el.setAttribute(
     'refX',
     marker.shape === VLMarkerShapeEnum.ARROW ? String(MARKER_VIEWBOX - ARROW_TIP_INSET) : String(CENTER),

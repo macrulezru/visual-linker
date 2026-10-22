@@ -159,3 +159,51 @@ test('the programmatic API starts, completes and cancels', async ({ page }) => {
   })
   expect(result).toEqual({ started: true, active: true, done: true, after: false, bad: false })
 })
+
+const setupWith = (page: Page, connect: object, connections: object[], extra: object) =>
+  page.evaluate(
+    ([c, list, e]) =>
+      (window as unknown as { __stand: { setup(c: object, l: object[], e: object): void } }).__stand.setup(
+        c as object,
+        list as object[],
+        e as object,
+      ),
+    [connect, connections, extra] as const,
+  )
+
+test('a button inside a block keeps its click and does not start a connection', async ({ page }) => {
+  await setup(page, { from: 'block', to: 'block' })
+  await page.click('#btn')
+  expect(
+    await page.evaluate(() => (window as unknown as { __stand: { clicks: { count: number } } }).__stand.clicks.count),
+  ).toBe(1)
+  expect(await events(page)).toEqual([])
+  const active = await page.evaluate(
+    () => (window as unknown as { __stand: { engine(): StandEngine } }).__stand.engine().isConnecting().active,
+  )
+  expect(active).toBe(false)
+})
+
+test('block attributes mark the source and the candidate during a drag, and the line stops short of the port', async ({
+  page,
+}) => {
+  await setupWith(
+    page,
+    {},
+    [{ id: 'x', from: { blockId: 'src', portId: 'p1' }, to: { blockId: 'dst', portId: 'q1' } }],
+    { lines: { curve: 'straight', endGap: 8 }, ports: { show: 'all' } },
+  )
+  const d = await page.locator('path.vl-connection').first().getAttribute('d')
+  const circle = await page.locator('circle.vl-port').first().getAttribute('cx')
+  const [, startX] = /^M ([\d.]+)/.exec(d!)!
+  expect(Number(startX) - Number(circle)).toBeCloseTo(8, 0)
+
+  const start = await center(page, 'src:p2')
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 100, start.y, { steps: 4 })
+  expect(await page.locator('#src').getAttribute('data-vl-connect-state')).toBe('source')
+  expect(await page.locator('#dst').getAttribute('data-vl-connect-state')).toBe('candidate')
+  await page.mouse.up()
+  expect(await page.locator('[data-vl-connect-state]').count()).toBe(0)
+})

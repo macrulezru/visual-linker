@@ -425,6 +425,30 @@ When a block is not registered (a collapsed tree node, a row a virtualized list 
 scrolled out of view, the end is drawn to the first usable `fallback` block and the connection takes the `proxied`
 state (`lines.proxied`, `style.proxied`). `ConnectionLayout.proxied` tells which end moved.
 
+#### Ports and roles in lists
+
+```ts
+const linker = createVisualLinker(container, {
+  lines: { endGap: 2 },
+  ports: {
+    show: 'all', // a circle on every declared port, connected or not
+    clearance: 'auto', // lines stop at the circle's edge
+    sides: { source: 'right', target: 'left' },
+    source: { fill: '#3b6fd4' },
+    target: { fill: '#2f9e6b' },
+  },
+  interaction: { connect: { enabled: true, handle: 'never', dimOthers: 0.3 } },
+})
+```
+
+A port is one circle: the end of a line and the drag handle at once, the same size connected or not. Colors come from
+`ports.source` / `ports.target`, `ports.connected`, a port's own `style` / `className`, and `ports.connect.<state>`.
+Buttons, links and inputs inside a block keep working: a press that starts on an element matching
+`interaction.connect.ignore` never starts or finishes a connection. The block element carries
+`data-vl-connect-state`, `data-vl-hover` and `data-vl-proxy-count`, so a whole row can be styled in CSS.
+`ports.render: 'dom'` leaves the port to your own element; `lines.kinds`, `lines.overlap` and
+`markers.<position>.units: 'px'` give finer control of the lines. `connect:candidate` reports the end under the pointer.
+
 #### Many blocks and connections
 
 ```ts

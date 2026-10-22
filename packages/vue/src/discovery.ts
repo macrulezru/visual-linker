@@ -322,6 +322,8 @@ function samePorts(a: PortDescriptor[] = [], b: PortDescriptor[] = []): boolean 
         port.id === other.id &&
         port.connect === other.connect &&
         port.ariaLabel === other.ariaLabel &&
+        port.className === other.className &&
+        JSON.stringify(port.style) === JSON.stringify(other.style) &&
         port.target === other.target &&
         sameSide(port.side, other.side) &&
         port.offset === other.offset &&

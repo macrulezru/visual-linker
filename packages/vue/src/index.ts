@@ -10,6 +10,9 @@ export type { BlockDirectiveOptions, BlockDirectiveValue, PortDirectiveOptions, 
 export { useVisualLinker } from './useVisualLinker'
 export type { UseVisualLinkerOptions, UseVisualLinkerReturn } from './useVisualLinker'
 
+export { useVisualLinkerConnect } from './useVisualLinkerConnect'
+export type { UseVisualLinkerConnectReturn } from './useVisualLinkerConnect'
+
 export {
   VISUAL_LINKER_CONFIG_KEY,
   createSharedConfig,
