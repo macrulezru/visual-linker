@@ -51,6 +51,49 @@ describe('orthogonalPoints', () => {
   })
 })
 
+describe('orthogonalPoints — never doubles back through the endpoint blocks', () => {
+  const R = VLFixedSideEnum.RIGHT
+  const L = VLFixedSideEnum.LEFT
+  const T = VLFixedSideEnum.TOP
+
+  it('runs the trunk outside both blocks when both ends leave the same side', () => {
+    // right → right: the trunk sits beyond the block that sticks out further (x = 438 + 20), not between the ports
+    expect(orthogonalPoints({ x: 438, y: 500 }, R, { x: 349, y: 230 }, R)).toEqual([
+      { x: 438, y: 500 },
+      { x: 458, y: 500 },
+      { x: 458, y: 230 },
+      { x: 349, y: 230 },
+    ])
+    // left → left: mirrored, beyond the leftmost block
+    expect(orthogonalPoints({ x: 100, y: 0 }, L, { x: 40, y: 80 }, L).map((p) => p.x)).toEqual([100, 20, 20, 40])
+  })
+
+  it('steps out, across and back in when the target lies behind a facing exit', () => {
+    expect(orthogonalPoints({ x: 100, y: 0 }, R, { x: 0, y: 100 }, L)).toEqual([
+      { x: 100, y: 0 },
+      { x: 120, y: 0 },
+      { x: 120, y: 50 },
+      { x: -20, y: 50 },
+      { x: -20, y: 100 },
+      { x: 0, y: 100 },
+    ])
+  })
+
+  it('takes the stub length from the argument (default 20px)', () => {
+    expect(orthogonalPoints({ x: 438, y: 500 }, R, { x: 349, y: 230 }, R, 40)[1]).toEqual({ x: 478, y: 500 })
+    expect(orthogonalPoints({ x: 438, y: 500 }, R, { x: 349, y: 230 }, R)[1]).toEqual({ x: 458, y: 500 })
+  })
+
+  it('does not make an "L" when the target is behind the exit or entered from its far side', () => {
+    // exit right, target to the left → out a stub first
+    const behind = orthogonalPoints({ x: 100, y: 0 }, R, { x: 0, y: 100 }, T)
+    expect(behind[1]).toEqual({ x: 120, y: 0 })
+    // exit right, target ahead but its top side faces away (arrives from below)
+    const farSide = orthogonalPoints({ x: 0, y: 100 }, R, { x: 100, y: 0 }, T)
+    expect(farSide[1]).toEqual({ x: 20, y: 100 })
+  })
+})
+
 describe('roundedPolylinePath', () => {
   it('draws a plain M/L path for two points regardless of radius', () => {
     expect(
@@ -176,7 +219,7 @@ describe('computeBranchInfo', () => {
     expect(result.size).toBe(0)
   })
 
-  it('clamps a negative (backwards) distance to 0 rather than producing a branch point behind the anchor', () => {
+  it('keeps the branch point a minimum stub out of the block (never on its edge, never behind the anchor)', () => {
     const result = computeBranchInfo([
       entry({
         connectionId: 'a',
@@ -193,7 +236,7 @@ describe('computeBranchInfo', () => {
         otherPoint: { x: 10, y: 50 },
       }),
     ])
-    expect(result.get('a')!.branchPoint).toEqual({ x: 0, y: 0 })
+    expect(result.get('a')!.branchPoint).toEqual({ x: 0, y: 20 })
   })
 
   it('caps the trunk at maxTrunkReach even when a sibling would naturally reach further', () => {

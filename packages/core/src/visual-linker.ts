@@ -39,6 +39,7 @@ import {
   DEFAULT_CURVE_TYPE,
   DEFAULT_DRAGGABLE,
   DEFAULT_MAX_TRUNK_REACH,
+  DEFAULT_STUB,
   DEFAULT_OBSTACLE_PADDING,
   DEFAULT_PORT_OFFSET,
   DEFAULT_PORT_RADIUS,
@@ -575,7 +576,16 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     if (curve === VLConnectionCurveEnum.STRAIGHT) return straightPath(from.point, toPoint)
     if (curve === VLConnectionCurveEnum.SMOOTHSTEP) {
       return roundedPolylinePath(
-        smoothstepPoints(from.point, from.side, toPoint, facing, undefined, undefined),
+        smoothstepPoints(
+          from.point,
+          from.side,
+          toPoint,
+          facing,
+          undefined,
+          undefined,
+          undefined,
+          view.smoothstep?.stub ?? DEFAULT_STUB,
+        ),
         view.smoothstep?.cornerRadius ?? DEFAULT_CORNER_RADIUS,
       )
     }
@@ -1391,6 +1401,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           side: own.side,
           otherPoint: other.point,
           maxReach: item.view.smoothstep?.maxTrunkReach ?? DEFAULT_MAX_TRUNK_REACH,
+          stub: item.view.smoothstep?.stub ?? DEFAULT_STUB,
         }
       })
     const fromBranches = computeBranchInfo(branchEntries('from'))
@@ -1523,6 +1534,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
               item.to.branchPortId ?? '',
               item.view.smoothstep?.cornerRadius ?? '',
               item.view.smoothstep?.maxTrunkReach ?? '',
+              item.view.smoothstep?.stub ?? '',
               item.view.routing?.avoidObstacles ? 1 : 0,
               item.view.routing?.padding ?? '',
               signatureOf(item.view.jumps) ?? '',
@@ -1613,6 +1625,7 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
                       padding: obstaclePadding,
                       ...(maxRoutingNodes !== undefined ? { maxNodes: maxRoutingNodes } : {}),
                     }) ?? plain),
+          item.view.smoothstep?.stub ?? DEFAULT_STUB,
         )
         smoothEntries.set(connection.id, { inSig, points })
         smoothPointsById.set(connection.id, points)

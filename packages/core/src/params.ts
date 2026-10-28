@@ -39,6 +39,12 @@ export const DEFAULT_CORNER_RADIUS = 8
  * continuous line.
  */
 export const DEFAULT_MAX_TRUNK_REACH = 48
+/**
+ * How far, in px, a smoothstep line keeps going straight out of a block's side before it may turn —
+ * also the clearance of a trunk that wraps around blocks and the minimum reach of a shared branch point.
+ * Without it a line would turn right on the block's edge and run along it.
+ */
+export const DEFAULT_STUB = 20
 
 // --- Engine-wide behavior (visual-linker.ts: VisualLinkerConfig fallbacks) ---
 

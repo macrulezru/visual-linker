@@ -1521,3 +1521,39 @@ describe('portSpread', () => {
     expect(new Set(Object.values(ends).map((layout) => layout.to.x)).size).toBe(3)
   })
 })
+
+describe("curve: 'smoothstep' — stub (exit length)", () => {
+  // два блока, правые края порт-правой стороны: линия обязана выйти за блок, а не идти по его краю
+  const setup = (config: Parameters<typeof createVisualLinker>[1], style: Record<string, unknown> = {}) => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40 })
+    const b = makeBlock('b', { left: 0, top: 200, width: 200, height: 40 })
+    const engine = createVisualLinker(container, { ports: { show: false }, ...config })
+    engine.setBlocks([
+      { id: 'a', el: a, ports: [{ id: 'p', side: VLFixedSideEnum.RIGHT }] },
+      { id: 'b', el: b, ports: [{ id: 'p', side: VLFixedSideEnum.RIGHT }] },
+    ])
+    engine.setConnections([
+      {
+        id: 'c',
+        from: { blockId: 'a', portId: 'p' },
+        to: { blockId: 'b', portId: 'p' },
+        style: { curve: VLConnectionCurveEnum.SMOOTHSTEP, smoothstep: { cornerRadius: 0, ...style } },
+      },
+    ])
+    return container.querySelector('path.vl-connection')!.getAttribute('d')
+  }
+
+  it('runs the trunk 20px beyond the further block by default', () => {
+    expect(setup({})).toBe('M 100 20 L 220 20 L 220 220 L 200 220')
+  })
+
+  it('takes a global stub from lines.smoothstep.stub', () => {
+    expect(setup({ lines: { smoothstep: { stub: 50 } } })).toBe('M 100 20 L 250 20 L 250 220 L 200 220')
+  })
+
+  it("lets a connection's own stub override the global one", () => {
+    expect(setup({ lines: { smoothstep: { stub: 50 } } }, { stub: 8 })).toBe('M 100 20 L 208 20 L 208 220 L 200 220')
+  })
+})

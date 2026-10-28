@@ -130,6 +130,7 @@ export interface BezierConfig {
 export interface SmoothstepConfig {
   cornerRadius?: number
   maxTrunkReach?: number
+  stub?: number
 }
 
 export interface RoutingConfig {

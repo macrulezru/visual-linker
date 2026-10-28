@@ -1,6 +1,7 @@
 import { VLFixedSideEnum } from './enums'
 import type { FixedSide } from './types'
 import { angleDeg, type Point } from './geometry'
+import { DEFAULT_STUB } from './params'
 
 type Axis = 'x' | 'y'
 
@@ -28,29 +29,60 @@ function perpendicularSideToward(trunkSide: FixedSide, from: Point, towards: Poi
  * Builds the polyline (before corner-rounding) connecting two directed
  * points: `from` must leave along `fromSide`'s normal, `to` must be entered
  * along `toSide`'s normal (i.e. approached from that side, moving opposite
- * to its normal). Three cases:
+ * to its normal). The route never doubles back through the block it leaves
+ * or enters:
  * - Same point / already aligned on the shared axis → a single straight segment.
- * - Perpendicular axes (one horizontal, one vertical) → one 90° bend ("L").
- * - Same axis, not aligned → two bends at the midpoint between them ("Z"/"S"),
- *   so the path leaves and arrives correctly oriented on both ends.
+ * - Perpendicular axes, target ahead of the exit and approachable from its side → one 90° bend ("L").
+ * - Opposite sides facing each other → two bends at the midpoint ("Z"/"S").
+ * - Same side on both ends (right→right) → a trunk that runs outside both blocks ("C").
+ * - Anything else (target behind the exit, entered from the far side) → goes out a `stub` (default 20px), around, and in ("S" with 4 bends).
  */
-export function orthogonalPoints(from: Point, fromSide: FixedSide, to: Point, toSide: FixedSide): Point[] {
+export function orthogonalPoints(
+  from: Point,
+  fromSide: FixedSide,
+  to: Point,
+  toSide: FixedSide,
+  stub: number = DEFAULT_STUB,
+): Point[] {
   const fromAxis = sideAxis(fromSide)
   const toAxis = sideAxis(toSide)
+  const fs = sideSign(fromSide)
+  const ts = sideSign(toSide)
 
   if (fromAxis === toAxis) {
-    if (fromAxis === 'x' && Math.abs(from.y - to.y) < 0.5) return [from, to]
-    if (fromAxis === 'y' && Math.abs(from.x - to.x) < 0.5) return [from, to]
-    if (fromAxis === 'x') {
-      const midX = (from.x + to.x) / 2
-      return [from, { x: midX, y: from.y }, { x: midX, y: to.y }, to]
+    const horizontal = fromAxis === 'x'
+    // p / q: the coordinate along the routing axis and the one across it
+    const [p, q]: ['x' | 'y', 'x' | 'y'] = horizontal ? ['x', 'y'] : ['y', 'x']
+    const at = (along: number, across: number): Point =>
+      horizontal ? { x: along, y: across } : { x: across, y: along }
+
+    const facingAhead = fs !== ts && (to[p] - from[p]) * fs > -0.5
+    if (facingAhead && Math.abs(from[q] - to[q]) < 0.5) return [from, to]
+    if (facingAhead) {
+      const mid = (from[p] + to[p]) / 2
+      return [from, at(mid, from[q]), at(mid, to[q]), to]
     }
-    const midY = (from.y + to.y) / 2
-    return [from, { x: from.x, y: midY }, { x: to.x, y: midY }, to]
+    if (fs === ts) {
+      // both ends on the same side: the trunk runs beyond whichever block sticks out further
+      const trunk = fs > 0 ? Math.max(from[p], to[p]) + stub : Math.min(from[p], to[p]) - stub
+      return [from, at(trunk, from[q]), at(trunk, to[q]), to]
+    }
+    // facing sides, but the target lies behind the exit: out, across, back in
+    const outFrom = from[p] + fs * stub
+    const outTo = to[p] + ts * stub
+    const mid = (from[q] + to[q]) / 2
+    return [from, at(outFrom, from[q]), at(outFrom, mid), at(outTo, mid), at(outTo, to[q]), to]
   }
 
-  if (fromAxis === 'x') return [from, { x: to.x, y: from.y }, to]
-  return [from, { x: from.x, y: to.y }, to]
+  const horizontalFirst = fromAxis === 'x'
+  // the exit runs along `a` (the from side's axis), the entry along `b`
+  const [a, b]: ['x' | 'y', 'x' | 'y'] = horizontalFirst ? ['x', 'y'] : ['y', 'x']
+  const at = (va: number, vb: number): Point => (horizontalFirst ? { x: va, y: vb } : { x: vb, y: va })
+  if ((to[a] - from[a]) * fs > 0.5 && (from[b] - to[b]) * ts > 0.5) return [from, at(to[a], from[b]), to]
+  // target behind the exit or approached from its far side: step out, then reach the entry's stub
+  const exit = from[a] + fs * stub
+  const entry = to[b] + ts * stub
+  return [from, at(exit, from[b]), at(exit, entry), at(to[a], entry), to]
 }
 
 /**
@@ -139,6 +171,8 @@ interface BranchEntry {
   otherPoint: Point
   /** This connection's own `maxTrunkReach`; the group uses the smallest among its members. */
   maxReach: number
+  /** This connection's own `stub`; the group uses the largest among its members as the branch point's minimum reach. */
+  stub?: number
 }
 
 /**
@@ -175,6 +209,7 @@ export function computeBranchInfo(entries: BranchEntry[]): Map<string, BranchInf
     let nearestId = members[0]!.connectionId
     let nearestDistance = Infinity
     let maxReach = Infinity
+    let stub = 0
     for (const member of members) {
       const distance = (member.otherPoint[axis] - anchor[axis]) * sign
       if (distance < nearestDistance) {
@@ -182,8 +217,10 @@ export function computeBranchInfo(entries: BranchEntry[]): Map<string, BranchInf
         nearestId = member.connectionId
       }
       maxReach = Math.min(maxReach, member.maxReach)
+      stub = Math.max(stub, member.stub ?? DEFAULT_STUB)
     }
-    const reach = Math.min(Math.max(nearestDistance, 0), maxReach)
+    // at least `stub` out of the block: a branch point on the port itself would send the peeling siblings along the block's own edge
+    const reach = Math.min(Math.max(nearestDistance, stub), Math.max(maxReach, stub))
     const branchPoint =
       axis === 'x' ? { x: anchor.x + reach * sign, y: anchor.y } : { x: anchor.x, y: anchor.y + reach * sign }
 
@@ -225,6 +262,7 @@ export function smoothstepPoints(
   fromBranch: BranchInfo | undefined,
   toBranch: BranchInfo | undefined,
   routeMiddle?: MiddleRouter,
+  stub: number = DEFAULT_STUB,
 ): Point[] {
   const startPoint = fromBranch ? fromBranch.branchPoint : from
   const startSide =
@@ -232,7 +270,7 @@ export function smoothstepPoints(
   const endPoint = toBranch ? toBranch.branchPoint : to
   const endSide = toBranch && !toBranch.isNearest ? perpendicularSideToward(toSide, toBranch.branchPoint, from) : toSide
 
-  const plain = orthogonalPoints(startPoint, startSide, endPoint, endSide)
+  const plain = orthogonalPoints(startPoint, startSide, endPoint, endSide, stub)
   const middle = routeMiddle ? routeMiddle(startPoint, startSide, endPoint, endSide, plain) : plain
 
   const points: Point[] = [from]
@@ -257,8 +295,12 @@ export function smoothstepPath(
   fromBranch: BranchInfo | undefined,
   toBranch: BranchInfo | undefined,
   cornerRadius: number,
+  stub: number = DEFAULT_STUB,
 ): string {
-  return roundedPolylinePath(smoothstepPoints(from, fromSide, to, toSide, fromBranch, toBranch), cornerRadius)
+  return roundedPolylinePath(
+    smoothstepPoints(from, fromSide, to, toSide, fromBranch, toBranch, undefined, stub),
+    cornerRadius,
+  )
 }
 
 /** The point at half the polyline's total arc length — for positioning a label/tooltip along a `smoothstep` connection. */
