@@ -90,7 +90,7 @@ const linker = createVisualLinker(el, {
     focus: { width: 4 },
     opacity: 1,
     bezier: { curvature: 0.5, minReach: 24, maxReach: 160, angleBlend: 0.55, angleMaxOffset: 30 },
-    smoothstep: { cornerRadius: 8, maxTrunkReach: 48 },
+    smoothstep: { cornerRadius: 8, maxTrunkReach: 48, stub: 20 },
     routing: { avoidObstacles: true, padding: 12 },
     jumps: { radius: 6 },
     animated: { shape: 'dots', speed: 50 },
@@ -185,6 +185,19 @@ linker.setBlocks([
   },
 ])
 ```
+
+#### How far a line leaves a block (`stub`)
+
+A `smoothstep` line keeps going straight out of a block's side for `stub` px (default **20**) before it may turn. The same
+distance is the clearance of a trunk that wraps around the blocks (both ends on the same side, or the target lying behind the
+exit) and the minimum reach of a shared branch point — so a line never runs along a block's own edge.
+
+```ts
+createVisualLinker(el, { lines: { smoothstep: { stub: 32 } } }) // every line
+{ id: 'a-b', from, to, style: { curve: 'smoothstep', smoothstep: { stub: 8 } } } // this connection only
+```
+
+For a group of connections sharing a port, the largest `stub` among them is used for the branch point.
 
 #### Spreading lines that share a port
 
