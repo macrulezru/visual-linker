@@ -5,6 +5,7 @@ import type {
   ConnectPortState,
   MarkerStyle,
   PortStyle,
+  StackingPlane,
   VisualLinkerConfig,
 } from './types'
 import {
@@ -92,6 +93,7 @@ export interface SvgPortInput {
   className?: string
   style?: PortStyle
   opacity?: number
+  stacking?: StackingPlane
 }
 
 export interface SvgLayerHandlers {
@@ -193,10 +195,15 @@ export function createSvgLayer(
   let handlesLayer: SVGGElement | null = null
   let previewPath: SVGPathElement | null = null
   let liveRegion: HTMLElement | null = null
+  let underlaySvg: SVGSVGElement | null = null
+  let underlayHost: HTMLElement | null = null
+  let lastWidth = 0
+  let lastHeight = 0
 
   const paths = new Map<string, SVGPathElement>()
   const hits = new Map<string, SVGPathElement>()
   const flows = new Map<string, SVGPathElement>()
+  const ghosts = new Map<string, SVGPathElement>()
   const labelEls = new Map<string, SVGGElement>()
   const labelInputs = new Map<string, SvgLabelInput>()
   const labelKeys = new Map<string, string>()
@@ -277,7 +284,137 @@ export function createSvgLayer(
   }
 
   function applyTheme() {
-    for (const [name, value] of themeVariables(config().theme)) setStyle(svg, name, value)
+    const vars = themeVariables(config().theme)
+    for (const el of [svg, underlaySvg]) {
+      if (!el) continue
+      for (const [name, value] of vars) setStyle(el, name, value)
+    }
+  }
+
+  function linePlane(id: string): StackingPlane {
+    const view = resolveLines(config().lines, styles.get(id), kinds.get(id))
+    return view.stacking ?? config().stacking?.lines ?? 'over'
+  }
+
+  function markersLifted(id: string): boolean {
+    return linePlane(id) === 'under' && (config().stacking?.markers ?? 'over') === 'over'
+  }
+
+  function portPlane(input: SvgPortInput | undefined): StackingPlane {
+    return input?.stacking ?? config().stacking?.ports ?? 'over'
+  }
+
+  function needsUnderlay(): boolean {
+    if ((config().stacking?.lines ?? 'over') === 'under') return true
+    if ((config().stacking?.ports ?? 'over') === 'under') return true
+    for (const id of paths.keys()) if (linePlane(id) === 'under') return true
+    for (const style of styles.values()) if (style?.stacking === 'under') return true
+    for (const input of portInputs.values()) if (portPlane(input) === 'under') return true
+    return false
+  }
+
+  function copySize(el: SVGSVGElement) {
+    if (lastWidth) el.setAttribute('width', String(lastWidth))
+    if (lastHeight) el.setAttribute('height', String(lastHeight))
+  }
+
+  function createUnderlaySvg(): SVGSVGElement {
+    const el = document.createElementNS(SVG_NS, 'svg')
+    el.setAttribute('class', 'vl-svg vl-svg--under')
+    el.style.position = 'absolute'
+    el.style.inset = '0'
+    el.style.overflow = 'visible'
+    el.style.pointerEvents = 'none'
+    const styleEl = document.createElementNS(SVG_NS, 'style')
+    styleEl.textContent = DEFAULT_STYLE
+    el.appendChild(styleEl)
+    copySize(el)
+    return el
+  }
+
+  function mountUnderlay() {
+    const host = underlayHost ?? container
+    if (underlaySvg && underlaySvg.parentElement === host) return
+    underlaySvg ??= createUnderlaySvg()
+    if (underlaySvg.parentElement !== host) {
+      if (host === container) host.insertBefore(underlaySvg, host.firstChild)
+      else host.appendChild(underlaySvg)
+    }
+    applyTheme()
+  }
+
+  function teardownUnderlay() {
+    if (!underlaySvg) return
+    underlaySvg.remove()
+    underlaySvg = null
+  }
+
+  function lineHost(id: string): SVGSVGElement {
+    return linePlane(id) === 'under' && underlaySvg ? underlaySvg : svg
+  }
+
+  function portHost(input: SvgPortInput | undefined): SVGSVGElement {
+    return portPlane(input) === 'under' && underlaySvg ? underlaySvg : svg
+  }
+
+  function insertInto(host: SVGSVGElement, el: SVGElement) {
+    if (host === svg) host.insertBefore(el, labelsLayer)
+    else host.appendChild(el)
+  }
+
+  function placeConnection(id: string) {
+    const el = paths.get(id)
+    if (!el) return
+    const host = lineHost(id)
+    if (el.ownerSVGElement !== host) insertInto(host, el)
+    const flow = flows.get(id)
+    if (flow && flow.parentNode !== el.parentNode) {
+      const parent = el.parentNode
+      if (parent) parent.insertBefore(flow, el.nextSibling)
+    }
+    const hit = hits.get(id)
+    if (hit && hit.ownerSVGElement !== host) insertInto(host, hit)
+  }
+
+  function syncUnderlay() {
+    if (needsUnderlay()) mountUnderlay()
+    else teardownUnderlay()
+    for (const id of paths.keys()) placeConnection(id)
+    for (const [key, el] of ports) {
+      const host = portHost(portInputs.get(key))
+      if (el.ownerSVGElement !== host) insertInto(host, el)
+    }
+  }
+
+  function setUnderlay(host: HTMLElement | null) {
+    underlayHost = host
+    syncUnderlay()
+  }
+
+  function syncMarkerGhost(id: string, el: SVGPathElement) {
+    if (!markersLifted(id) || !underlaySvg) {
+      ghosts.get(id)?.remove()
+      ghosts.delete(id)
+      return
+    }
+    let ghost = ghosts.get(id)
+    if (!ghost) {
+      ghost = document.createElementNS(SVG_NS, 'path')
+      ghost.setAttribute('class', 'vl-connection vl-connection-markers')
+      ghost.setAttribute('aria-hidden', 'true')
+      ghost.style.fill = 'none'
+      ghost.style.pointerEvents = 'none'
+      ghost.style.strokeOpacity = '0'
+      svg.insertBefore(ghost, labelsLayer)
+      ghosts.set(id, ghost)
+    }
+    ghost.setAttribute('d', el.getAttribute('d') ?? '')
+    ghost.style.stroke = el.style.stroke
+    ghost.style.strokeWidth = el.style.strokeWidth
+    ghost.style.markerStart = el.style.markerStart
+    ghost.style.markerEnd = el.style.markerEnd
+    el.style.markerStart = ''
+    el.style.markerEnd = ''
   }
 
   function ensureMarker(
@@ -341,6 +478,7 @@ export function createSvgLayer(
     connectionMarkers.set(id, used)
     el.style.markerStart = markerIds.start && !hidden.start ? `url(#${markerIds.start})` : ''
     el.style.markerEnd = markerIds.end && !hidden.end ? `url(#${markerIds.end})` : ''
+    syncMarkerGhost(id, el)
 
     const tint = applyFlow(id, el, view.animated, width, color, emphasised, opacity)
     const combined = opacity === undefined && tint === undefined ? undefined : (opacity ?? 1) * (tint ?? 1)
@@ -369,7 +507,8 @@ export function createSvgLayer(
       overlay.setAttribute('aria-hidden', 'true')
       flows.set(id, overlay)
     }
-    if (overlay.previousElementSibling !== el) svg.insertBefore(overlay, el.nextSibling)
+    const parent = el.parentNode
+    if (parent && overlay.previousElementSibling !== el) parent.insertBefore(overlay, el.nextSibling)
 
     const period = flow.dash + flow.gap
     overlay.setAttribute('d', el.getAttribute('d') ?? '')
@@ -404,13 +543,22 @@ export function createSvgLayer(
   }
 
   function raiseActivePaths() {
-    const anchor = svg.querySelector('.vl-port') ?? labelsLayer
     for (const id of [...selectedIds, ...highlightedIds, ...activeIds]) {
       const el = paths.get(id)
       if (!el) continue
-      svg.insertBefore(el, anchor)
+      const host = el.ownerSVGElement
+      if (!host) continue
       const flow = flows.get(id)
-      if (flow) svg.insertBefore(flow, anchor)
+      if (host === svg) {
+        const anchor = svg.querySelector('.vl-port') ?? labelsLayer
+        host.insertBefore(el, anchor)
+        if (flow) host.insertBefore(flow, anchor)
+        const ghost = ghosts.get(id)
+        if (ghost) host.insertBefore(ghost, anchor)
+      } else {
+        host.appendChild(el)
+        if (flow) host.appendChild(flow)
+      }
     }
   }
 
@@ -582,6 +730,8 @@ export function createSvgLayer(
       hidden.start ? 1 : 0,
       hidden.end ? 1 : 0,
       hoverableFlags.get(id) ?? '',
+      linePlane(id),
+      config().stacking?.markers ?? '',
       selectable() ? 1 : 0,
       ariaLabels.get(id) ?? '',
       kinds.get(id) ?? '',
@@ -612,8 +762,14 @@ export function createSvgLayer(
   }
 
   function resize(width: number, height: number) {
+    lastWidth = width
+    lastHeight = height
     svg.setAttribute('width', String(width))
     svg.setAttribute('height', String(height))
+    if (underlaySvg) {
+      underlaySvg.setAttribute('width', String(width))
+      underlaySvg.setAttribute('height', String(height))
+    }
   }
 
   function updateLabels(inputs: SvgLabelInput[]) {
@@ -643,8 +799,8 @@ export function createSvgLayer(
     const el = document.createElementNS(SVG_NS, 'path')
     el.setAttribute('class', 'vl-connection')
     el.setAttribute('role', 'img')
-    svg.insertBefore(el, labelsLayer)
     paths.set(id, el)
+    insertInto(lineHost(id), el)
 
     const hit = document.createElementNS(SVG_NS, 'path')
     hit.setAttribute('class', 'vl-connection-hit')
@@ -663,7 +819,7 @@ export function createSvgLayer(
       if (!focusedIds.delete(id)) return
       applyAll()
     })
-    svg.insertBefore(hit, labelsLayer)
+    insertInto(lineHost(id), hit)
     hits.set(id, hit)
     configureHit(id, hit)
     return el
@@ -676,6 +832,8 @@ export function createSvgLayer(
     hits.delete(id)
     flows.get(id)?.remove()
     flows.delete(id)
+    ghosts.get(id)?.remove()
+    ghosts.delete(id)
     styles.delete(id)
     styleKeys.delete(id)
     ariaLabels.delete(id)
@@ -707,8 +865,11 @@ export function createSvgLayer(
       if (!el) {
         el = document.createElementNS(SVG_NS, 'circle')
         el.setAttribute('class', 'vl-port')
-        svg.insertBefore(el, labelsLayer)
+        insertInto(portHost(input), el)
         ports.set(input.key, el)
+      } else {
+        const host = portHost(input)
+        if (el.ownerSVGElement !== host) insertInto(host, el)
       }
       el.setAttribute('cx', String(input.point.x))
       el.setAttribute('cy', String(input.point.y))
@@ -742,6 +903,7 @@ export function createSvgLayer(
         proxiedEnds.delete(input.id)
       }
     }
+    syncUnderlay()
     pruneHovered()
     const activeKeys = activeEndpointKeys()
     for (const input of nextPaths) {
@@ -753,8 +915,10 @@ export function createSvgLayer(
         el.setAttribute('d', input.d)
         hits.get(input.id)?.setAttribute('d', input.d)
         flows.get(input.id)?.setAttribute('d', input.d)
+        ghosts.get(input.id)?.setAttribute('d', input.d)
         drawn = true
       }
+      placeConnection(input.id)
       if (refreshConnection(input.id, el, activeKeys)) drawn = true
       if (drawn) drawnLastUpdate++
     }
@@ -770,6 +934,7 @@ export function createSvgLayer(
     }
 
     syncPorts(nextPorts)
+    syncUnderlay()
 
     updateLabels(nextLabels)
     return drawnLastUpdate
@@ -778,6 +943,7 @@ export function createSvgLayer(
   function applyConfig() {
     configVersion++
     textSizes.clear()
+    syncUnderlay()
     applyTheme()
     pruneHovered()
     for (const [id, hit] of hits) configureHit(id, hit)
@@ -921,12 +1087,13 @@ export function createSvgLayer(
   }
 
   function setDim(value: number | null) {
-    svg.classList.toggle('vl-svg--dim', value !== null)
-    if (value === null) svg.style.removeProperty('--vl-connect-dim')
-    else {
-      ensureConnectStyle()
-      svg.style.setProperty('--vl-connect-dim', String(value))
+    for (const el of [svg, underlaySvg]) {
+      if (!el) continue
+      el.classList.toggle('vl-svg--dim', value !== null)
+      if (value === null) el.style.removeProperty('--vl-connect-dim')
+      else el.style.setProperty('--vl-connect-dim', String(value))
     }
+    if (value !== null) ensureConnectStyle()
   }
 
   function announce(text: string) {
@@ -947,6 +1114,8 @@ export function createSvgLayer(
 
   function destroy() {
     svg.remove()
+    underlaySvg?.remove()
+    underlaySvg = null
     liveRegion?.remove()
     liveRegion = null
     handlesLayer = null
@@ -954,6 +1123,7 @@ export function createSvgLayer(
     paths.clear()
     hits.clear()
     flows.clear()
+    ghosts.clear()
     labelEls.clear()
     labelInputs.clear()
     labelKeys.clear()
@@ -995,7 +1165,8 @@ export function createSvgLayer(
     setDim,
     announce,
     removeLiveRegion,
-    contains: (node: Node) => svg.contains(node),
+    contains: (node: Node) => svg.contains(node) || Boolean(underlaySvg?.contains(node)),
+    setUnderlay,
     destroy,
   }
 }
