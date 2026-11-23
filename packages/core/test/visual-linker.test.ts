@@ -260,6 +260,90 @@ describe('createVisualLinker interactivity', () => {
       engine.destroy()
     })
   })
+
+  describe('drag collision', () => {
+    it('does not collide when collision is left unset', () => {
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 })
+      const b = makeBlock('b', { left: 150, top: 0, width: 100, height: 40, right: 250, bottom: 40, x: 150 })
+      engine = createVisualLinker(container, { ports: { show: false }, blocks: { draggable: true } })
+      engine.setBlocks([
+        { id: 'a', el: a },
+        { id: 'b', el: b },
+      ])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 80, clientY: 0 })
+      firePointer(a, 'pointerup', { clientX: 80, clientY: 0 })
+
+      expect(a.style.translate).toBe('80px 0px')
+
+      engine.destroy()
+    })
+
+    it('keeps the default gap from an overlapping neighbour', () => {
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 })
+      const b = makeBlock('b', { left: 150, top: 0, width: 100, height: 40, right: 250, bottom: 40, x: 150 })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { collision: true } },
+      })
+      engine.setBlocks([
+        { id: 'a', el: a },
+        { id: 'b', el: b },
+      ])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 80, clientY: 0 })
+      firePointer(a, 'pointerup', { clientX: 80, clientY: 0 })
+
+      // Intended 80; neighbour at 150 with gap 16 → 34.
+      expect(a.style.translate).toBe('34px 0px')
+
+      engine.destroy()
+    })
+
+    it('uses the larger of the two blocks gaps', () => {
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 })
+      const b = makeBlock('b', { left: 150, top: 0, width: 100, height: 40, right: 250, bottom: 40, x: 150 })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { collision: { gap: 12 } } },
+      })
+      engine.setBlocks([
+        { id: 'a', el: a, collision: { gap: 12 } },
+        { id: 'b', el: b, collision: { gap: 20 } },
+      ])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 80, clientY: 0 })
+      firePointer(a, 'pointerup', { clientX: 80, clientY: 0 })
+
+      expect(a.style.translate).toBe('30px 0px')
+
+      engine.destroy()
+    })
+
+    it('lets a block opt out of being an obstacle', () => {
+      const a = makeBlock('a', { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 })
+      const b = makeBlock('b', { left: 150, top: 0, width: 100, height: 40, right: 250, bottom: 40, x: 150 })
+      engine = createVisualLinker(container, {
+        ports: { show: false },
+        blocks: { draggable: true, drag: { collision: true } },
+      })
+      engine.setBlocks([
+        { id: 'a', el: a },
+        { id: 'b', el: b, collision: false },
+      ])
+
+      firePointer(a, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(a, 'pointermove', { clientX: 80, clientY: 0 })
+      firePointer(a, 'pointerup', { clientX: 80, clientY: 0 })
+
+      expect(a.style.translate).toBe('80px 0px')
+
+      engine.destroy()
+    })
+  })
 })
 
 describe('auto-side ports on a child element', () => {

@@ -116,6 +116,7 @@ describe('block/port discovery', () => {
                 'data-vl-draggable': '',
                 'data-vl-drag-handle': '.title',
                 'data-vl-drag-bounds': 'container',
+                'data-vl-collision': '20',
               },
               [
                 h('div', { class: 'title' }),
@@ -138,6 +139,7 @@ describe('block/port discovery', () => {
     expect(b.draggable).toBe(true)
     expect(b.dragHandle).toBe('.title')
     expect(b.dragBounds).toBe('container')
+    expect(b.collision).toEqual({ gap: 20 })
     expect(b.ports![0]).toMatchObject({ id: 'p', side: ['left', 'right'], offset: 0.25, anchorBlockId: 'b' })
 
     const c = byId(lastBlocks(), 'c')!

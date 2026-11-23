@@ -99,7 +99,7 @@ const linker = createVisualLinker(el, {
   markers: { end: { shape: 'arrow', hover: { size: 10 } }, sizes: { arrow: 8 } },
   ports: { show: true, radius: 4, fill: '#fff', stroke: '#2e8b57', hover: { radius: 6 }, spread: { gap: 16 } },
   labels: { background: '#fff', color: '#1c1e2b', fontSize: 11, hover: { background: '#eef' } },
-  blocks: { draggable: true, drag: { grid: 20, bounds: 'container' } },
+  blocks: { draggable: true, drag: { grid: 20, bounds: 'container', collision: { gap: 16 } } },
   interaction: {
     hover: true,
     highlight: true,
@@ -194,6 +194,7 @@ interface BlockDescriptor {
   draggable?: boolean // overrides the instance-wide default for this block
   dragHandle?: string | HTMLElement
   dragBounds?: 'container' | HTMLElement | { top?: number; right?: number; bottom?: number; left?: number }
+  collision?: boolean | { gap?: number } // overrides blocks.drag.collision
   stacking?: { ports?: 'over' | 'under' } // overrides config.stacking.ports
 }
 
@@ -423,7 +424,11 @@ measured — set `arrow.gap` to the distance from the endpoint instead.
 const linker = createVisualLinker(diagramEl, {
   blocks: {
     draggable: true, // every block draggable by default
-    drag: { grid: 20, bounds: 'container' }, // snap to a 20px grid, stay inside the container
+    drag: {
+      grid: 20,
+      bounds: 'container',
+      collision: { gap: 16 }, // keep this much air between blocks; the larger gap of a pair wins
+    },
   },
 })
 
@@ -436,6 +441,14 @@ Connected lines re-route in real time as a block moves — no manual
 `refresh()` call needed. `drag.bounds` also accepts a specific
 `HTMLElement` (a drop-zone elsewhere in the layout) or an inset object
 (`{ top, right, bottom, left }`, shrinking the container's own box).
+
+`drag.collision` stops a dragged block from overlapping the others.
+Off by default. `true` uses a 16px gap; `{ gap: n }` sets it. A block's
+own `collision` wins over the instance value (`false` opts that block out
+of being an obstacle). Between two blocks the **larger** of their gaps is
+kept — the same way CSS margins collapse. The helper `separateBox` is
+exported for the same rule outside of a pointer drag (e.g. dropping a new
+block onto the diagram).
 
 #### Creating connections
 

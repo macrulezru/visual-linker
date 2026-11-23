@@ -53,6 +53,13 @@ export const DEFAULT_CURVE_TYPE: ConnectionCurve = VLConnectionCurveEnum.BEZIER
 export const DEFAULT_SHOW_PORTS = true
 /** Whether a block can be dragged by pointer unless overridden per-block. */
 export const DEFAULT_DRAGGABLE = false
+/**
+ * Default clearance kept between two colliding blocks, px, when
+ * `blocks.drag.collision` (or a block's own `collision`) is `true` with no
+ * `gap`. Between two blocks the larger of their gaps is used, like CSS
+ * margin collapse.
+ */
+export const DEFAULT_BLOCK_GAP = 16
 /** Position along a port's side, or along a default (unspecified) port's own border, 0..1 (0.5 = center). */
 export const DEFAULT_PORT_OFFSET = 0.5
 /** `PortSpreadOptions.gap` default — px between neighbouring virtual ports of a spread port side. */

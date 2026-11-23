@@ -36,6 +36,16 @@ export interface DragBoundsInset {
 
 export type DragBounds = 'container' | HTMLElement | DragBoundsInset
 
+/**
+ * Block-to-block collision while dragging.
+ * `false` — this block does not collide (and is not an obstacle).
+ * `true` — collide with `DEFAULT_BLOCK_GAP`.
+ * `{ gap }` — collide, keeping at least `gap` px of air.
+ */
+export type CollisionOption = boolean | {
+  gap?: number
+}
+
 /** Paint plane relative to the blocks. `'over'` is the historical default. */
 export type StackingPlane = 'over' | 'under'
 
@@ -65,6 +75,8 @@ export interface BlockDescriptor {
   draggable?: boolean
   dragHandle?: string | HTMLElement
   dragBounds?: DragBounds
+  /** Overrides `blocks.drag.collision` for this block. */
+  collision?: CollisionOption
   portSpread?: PortSpread
   highlightable?: boolean
   stacking?: BlockStacking
@@ -245,6 +257,12 @@ export interface BlocksConfig {
   drag?: {
     grid?: number
     bounds?: DragBounds
+    /**
+     * Keep dragged blocks from overlapping. Off by default.
+     * `true` uses `DEFAULT_BLOCK_GAP`; `{ gap }` sets the clearance.
+     * A block's own `collision` wins; between two blocks the larger gap is used.
+     */
+    collision?: CollisionOption
   }
 }
 

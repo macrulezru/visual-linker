@@ -3,6 +3,7 @@ import type {
   BlockDescriptor,
   BlockStacking,
   ConnectRole,
+  CollisionOption,
   DragBounds,
   FixedSide,
   PortDescriptor,
@@ -27,6 +28,7 @@ export const VL_ATTR = {
   highlightable: 'data-vl-highlightable',
   dragHandle: 'data-vl-drag-handle',
   dragBounds: 'data-vl-drag-bounds',
+  collision: 'data-vl-collision',
   port: 'data-vl-port',
   portBlock: 'data-vl-port-block',
   side: 'data-vl-side',
@@ -59,6 +61,8 @@ export interface VisualLinkerBlock {
   dragHandle?: RefFriendlyElement
   /** Overrides the `options.dragBounds` default for this block. */
   dragBounds?: RefFriendlyDragBounds
+  /** Overrides `config.blocks.drag.collision` for this block. */
+  collision?: CollisionOption
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
   connect?: ConnectRole
@@ -75,6 +79,8 @@ export interface BlockDirectiveOptions {
   highlightable?: boolean
   dragHandle?: RefFriendlyElement
   dragBounds?: RefFriendlyDragBounds
+  /** Overrides `config.blocks.drag.collision` for this block. */
+  collision?: CollisionOption
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
   connect?: ConnectRole
@@ -167,6 +173,16 @@ function parseSide(value: string | null): PortSide | FixedSide[] | undefined {
   return parts.filter((part) => part !== 'auto') as FixedSide[]
 }
 
+/** `""`/`"true"` → on with the default gap, `"false"` → off, `"20"` → `{ gap: 20 }`. */
+function parseCollision(value: string | null): CollisionOption | undefined {
+  if (value === null) return undefined
+  const trimmed = value.trim()
+  if (trimmed === '' || trimmed === 'true') return true
+  if (trimmed === 'false') return false
+  const gap = parseNumber(trimmed)
+  return gap !== undefined ? { gap } : undefined
+}
+
 /** `""`/`"true"` → on with defaults, `"false"` → off, `"24"` → gap 24, `"24 4"` → gap 24 + padding 4. */
 function parseSpread(value: string | null): PortSpread | undefined {
   if (value === null) return undefined
@@ -215,6 +231,7 @@ export function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
       directive?.dragBounds !== undefined
         ? resolveDragBoundsForCore(directive.dragBounds)
         : parseDragBounds(el.getAttribute(VL_ATTR.dragBounds)),
+    collision: directive?.collision ?? parseCollision(el.getAttribute(VL_ATTR.collision)),
     portSpread: directive?.portSpread ?? parseSpread(el.getAttribute(VL_ATTR.portSpread)),
     connect: directive?.connect ?? parseConnect(el.getAttribute(VL_ATTR.connect)),
     stacking: directive?.stacking,
@@ -257,6 +274,7 @@ export function mergeExplicit(
     highlightable: block.highlightable ?? discovered?.highlightable,
     dragHandle: block.dragHandle !== undefined ? resolveElement(block.dragHandle) : discovered?.dragHandle,
     dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
+    collision: block.collision ?? discovered?.collision,
     portSpread: block.portSpread ?? discovered?.portSpread,
     connect: block.connect ?? discovered?.connect,
     stacking: block.stacking ?? discovered?.stacking,
@@ -313,6 +331,12 @@ function sameSpread(a: PortSpread | undefined, b: PortSpread | undefined): boole
   return a.gap === b.gap && a.padding === b.padding
 }
 
+function sameCollision(a: CollisionOption | undefined, b: CollisionOption | undefined): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false
+  return a.gap === b.gap
+}
+
 function sameBounds(a: DragBounds | undefined, b: DragBounds | undefined): boolean {
   if (a === b) return true
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
@@ -356,6 +380,7 @@ export function sameBlocks(a: readonly BlockDescriptor[], b: readonly BlockDescr
         block.connect === other.connect &&
         block.dragHandle === other.dragHandle &&
         sameBounds(block.dragBounds, other.dragBounds) &&
+        sameCollision(block.collision, other.collision) &&
         sameSpread(block.portSpread, other.portSpread) &&
         block.stacking?.ports === other.stacking?.ports &&
         samePorts(block.ports, other.ports)
