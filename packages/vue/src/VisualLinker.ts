@@ -145,6 +145,7 @@ export const VisualLinker = defineComponent({
   setup(props, { slots, emit, attrs, expose }) {
     const root = ref<HTMLElement | null>(null)
     const layer = ref<HTMLElement | null>(null)
+    const underLayer = ref<HTMLElement | null>(null)
     // The layer only renders client-side after mount: keeps SSR output and the
     // hydration pass identical, and lets scope="page" teleport it safely.
     const isMounted = ref(false)
@@ -263,9 +264,14 @@ export const VisualLinker = defineComponent({
           }),
         ]
         engine.value = created
+        created.setUnderlay?.(underLayer.value ?? null)
       },
       { flush: 'post' },
     )
+
+    watch(underLayer, (el) => {
+      engine.value?.setUnderlay?.(el ?? null)
+    })
 
     // watchEffect (not a plain watch) so refs read by collectBlocks's toValue()
     // calls — a `blocks` entry's `el`, a port's `target` — are tracked too, and
@@ -469,6 +475,16 @@ export const VisualLinker = defineComponent({
     return () => {
       const page = props.scope === 'page'
       const overlay = renderOverlay()
+      const stacking = effectiveConfig().stacking
+      // Page scope teleports a single overlay to <body>, so 'under' cannot
+      // paint behind in-page blocks. Container mode inserts a back layer
+      // before the slot: lines under, ports/markers (front layer) over.
+      const under =
+        !page &&
+        (stacking?.lines === 'under' ||
+          stacking?.ports === 'under' ||
+          props.connections.some((connection) => connection.style?.stacking === 'under') ||
+          props.blocks.some((block) => block.stacking?.ports === 'under'))
       const layerNode = isMounted.value
         ? h(
             'div',
@@ -485,6 +501,18 @@ export const VisualLinker = defineComponent({
             overlay ? [overlay] : [],
           )
         : null
+      const underNode =
+        isMounted.value && under
+          ? h('div', {
+              ref: underLayer,
+              class: 'vl-layer vl-layer--under',
+              style: {
+                position: 'absolute',
+                inset: '0',
+                pointerEvents: 'none',
+              },
+            })
+          : null
 
       const rootNode = h(
         'div',
@@ -494,9 +522,9 @@ export const VisualLinker = defineComponent({
           [VL_ATTR.root]: '',
           style: page ? undefined : { position: 'relative' },
         }),
-        // In container mode the layer is the root's last child, so it always
-        // paints over the slot content without any z-index juggling.
-        [slots.default?.(), page ? null : layerNode],
+        // Container mode: optional underlay, then the slot (blocks), then the
+        // front layer — paint order without z-index juggling.
+        [underNode, slots.default?.(), page ? null : layerNode],
       )
 
       // Always a fragment in page mode (not only once the layer exists), so

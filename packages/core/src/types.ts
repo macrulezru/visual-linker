@@ -36,6 +36,27 @@ export interface DragBoundsInset {
 
 export type DragBounds = 'container' | HTMLElement | DragBoundsInset
 
+/** Paint plane relative to the blocks. `'over'` is the historical default. */
+export type StackingPlane = 'over' | 'under'
+
+/**
+ * Instance-wide paint order. Each field defaults to `'over'`.
+ * Per-connection `ConnectionStyle.stacking` overrides `lines`.
+ * Per-block `BlockDescriptor.stacking.ports` overrides `ports`.
+ */
+export interface StackingConfig {
+  /** Connector strokes and flow animation. */
+  lines?: StackingPlane
+  /** Port dots. */
+  ports?: StackingPlane
+  /** Endpoint markers. When lines are `'under'`, `'over'` lifts markers onto the front overlay. */
+  markers?: StackingPlane
+}
+
+export interface BlockStacking {
+  ports?: StackingPlane
+}
+
 export interface BlockDescriptor {
   id: string
   el: HTMLElement
@@ -46,6 +67,7 @@ export interface BlockDescriptor {
   dragBounds?: DragBounds
   portSpread?: PortSpread
   highlightable?: boolean
+  stacking?: BlockStacking
 }
 
 export type ConnectionCurve =
@@ -171,6 +193,8 @@ export interface ConnectionMarkers {
 
 export type ConnectionStyle = LinesConfig & {
   markers?: ConnectionMarkers
+  /** Overrides `config.stacking.lines` for this connection. */
+  stacking?: StackingPlane
 }
 
 export interface PortStyle {
@@ -304,6 +328,7 @@ export interface VisualLinkerConfig {
   blocks?: BlocksConfig
   interaction?: InteractionConfig
   performance?: PerformanceConfig
+  stacking?: StackingConfig
 }
 
 export interface ConnectionEndpointRef {

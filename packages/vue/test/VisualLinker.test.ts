@@ -55,4 +55,32 @@ describe('VisualLinker', () => {
 
     wrapper.unmount()
   })
+
+  it('inserts an underlay layer before the slot when stacking.lines is under', async () => {
+    const wrapper = mount(VisualLinker, {
+      props: {
+        connections: [{ id: 'a-b', from: { blockId: 'a' }, to: { blockId: 'b' } }],
+        config: { stacking: { lines: 'under' }, markers: { end: { shape: 'arrow' } } },
+      },
+      slots: {
+        default: () => [
+          withDirectives(h('div', { class: 'card-a' }, 'A'), [[vVlBlock, 'a']]),
+          withDirectives(h('div', { class: 'card-b' }, 'B'), [[vVlBlock, 'b']]),
+        ],
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    const root = wrapper.find('.vl-container').element
+    const under = wrapper.find('.vl-layer--under')
+    const front = wrapper.find('.vl-layer:not(.vl-layer--under)')
+    expect(under.exists()).toBe(true)
+    expect(root.firstElementChild).toBe(under.element)
+    expect(under.find('path.vl-connection').exists()).toBe(true)
+    expect(front.find('circle.vl-port').exists()).toBe(true)
+    expect(front.find('path.vl-connection-markers').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
 })

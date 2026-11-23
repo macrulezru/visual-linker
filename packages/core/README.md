@@ -26,6 +26,7 @@ monorepo. Framework adapter:
 - **Creating connections** — the user drags from port to port, clicks two ports, or uses the keyboard; the library reports `connection:create-request` and your code decides (`interaction.connect`, off by default)
 - **Fallback ends** — a connection whose block is collapsed or not rendered is drawn to its nearest visible ancestor, in a `proxied` state you can style
 - **Built for hundreds of blocks** — only changed lines are redrawn, blocks without connections cost nothing, `batch()` groups changes, `performance.cull` skips lines nobody can see, `getStats()` shows what happened
+- **Paint order** — `stacking.lines: 'under'` draws strokes behind the blocks while ports and markers stay in front; a connection or block can override the instance-wide plane
 - **Auto-managed positioning** — sets `container`'s CSS position to `relative` for you if it's still `static`, so the SVG overlay lines up with your blocks with zero required setup CSS
 - **Zero runtime dependencies, zero peer dependencies** — usable standalone in any environment, including outside a framework entirely
 
@@ -107,6 +108,7 @@ const linker = createVisualLinker(el, {
     connect: { enabled: true, mode: 'both' }, // users draw connections — see Creating connections below
   },
   performance: { cull: true, maxConnectionsForJumps: 150 }, // see Many blocks and connections below
+  stacking: { lines: 'under' }, // strokes behind blocks; ports and markers stay in front
 })
 ```
 
@@ -127,6 +129,41 @@ linker.getConfig() // a copy of what is in effect
 
 Everything re-renders, and the listeners behind `blocks`/`interaction`
 (dragging, selection) are re-attached or removed to match.
+
+#### Stacking (lines behind blocks)
+
+The SVG overlay paints **over** the blocks by default. `stacking.lines: 'under'`
+draws connector strokes (and their flow animation) behind the blocks, while
+ports and endpoint markers stay in front — so a line can tuck under a card
+without hiding the arrow or the port.
+
+```ts
+createVisualLinker(el, {
+  stacking: {
+    lines: 'under', // default 'over'
+    ports: 'over',
+    markers: 'over',
+  },
+})
+```
+
+One connection overrides the instance-wide line plane:
+
+```ts
+{ id: 'highlight', from, to, style: { stacking: 'over' } }
+```
+
+One block overrides `ports`:
+
+```ts
+{ id: 'hero', el, stacking: { ports: 'under' } }
+```
+
+Vanilla `createVisualLinker(container)` inserts an underlay SVG as the
+container's first child when anything resolves to `'under'`. Pass a dedicated
+host with `linker.setUnderlay(host)` when the blocks aren't siblings of that
+SVG (the Vue component does this). `'under'` has no effect in the Vue
+component's `scope="page"` — that overlay is teleported to `<body>`.
 
 #### Themes
 
@@ -157,6 +194,7 @@ interface BlockDescriptor {
   draggable?: boolean // overrides the instance-wide default for this block
   dragHandle?: string | HTMLElement
   dragBounds?: 'container' | HTMLElement | { top?: number; right?: number; bottom?: number; left?: number }
+  stacking?: { ports?: 'over' | 'under' } // overrides config.stacking.ports
 }
 
 interface PortDescriptor {

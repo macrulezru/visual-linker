@@ -1,6 +1,7 @@
 import { toValue } from 'vue'
 import type {
   BlockDescriptor,
+  BlockStacking,
   ConnectRole,
   DragBounds,
   FixedSide,
@@ -61,6 +62,8 @@ export interface VisualLinkerBlock {
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
   connect?: ConnectRole
+  /** Overrides `config.stacking.ports` for this block. */
+  stacking?: BlockStacking
 }
 
 export interface BlockDirectiveOptions {
@@ -75,6 +78,8 @@ export interface BlockDirectiveOptions {
   /** Overrides `config.ports.spread` for this block. */
   portSpread?: PortSpread
   connect?: ConnectRole
+  /** Overrides `config.stacking.ports` for this block. */
+  stacking?: BlockStacking
 }
 /** `v-vl-block="'id'"` or `v-vl-block="{ id, ...options }"`. */
 export type BlockDirectiveValue = string | BlockDirectiveOptions
@@ -212,6 +217,7 @@ export function discoverBlock(el: HTMLElement, id: string): BlockDescriptor {
         : parseDragBounds(el.getAttribute(VL_ATTR.dragBounds)),
     portSpread: directive?.portSpread ?? parseSpread(el.getAttribute(VL_ATTR.portSpread)),
     connect: directive?.connect ?? parseConnect(el.getAttribute(VL_ATTR.connect)),
+    stacking: directive?.stacking,
   }
 }
 
@@ -253,6 +259,7 @@ export function mergeExplicit(
     dragBounds: block.dragBounds !== undefined ? resolveDragBoundsForCore(block.dragBounds) : discovered?.dragBounds,
     portSpread: block.portSpread ?? discovered?.portSpread,
     connect: block.connect ?? discovered?.connect,
+    stacking: block.stacking ?? discovered?.stacking,
   }
 }
 
@@ -350,6 +357,7 @@ export function sameBlocks(a: readonly BlockDescriptor[], b: readonly BlockDescr
         block.dragHandle === other.dragHandle &&
         sameBounds(block.dragBounds, other.dragBounds) &&
         sameSpread(block.portSpread, other.portSpread) &&
+        block.stacking?.ports === other.stacking?.ports &&
         samePorts(block.ports, other.ports)
       )
     })

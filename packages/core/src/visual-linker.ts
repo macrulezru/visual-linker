@@ -94,6 +94,15 @@ export interface VisualLinker {
   getConfig(): VisualLinkerConfig
   /** Forces an immediate path recalculation, bypassing the rAF batching (e.g. right before a screenshot). */
   refresh(): void
+  /** Programmatic drag offset (`translate`) for a block. `{x:0,y:0}` clears it. */
+  setDragOffset(id: string, offset: Point): void
+  /** Clears every stored drag offset and the CSS `translate` it applied. */
+  resetDragOffsets(): void
+  /**
+   * Host for the underlay SVG (`stacking.lines`/`ports` `'under'`).
+   * Omit / `null` to auto-insert as the first child of the engine container.
+   */
+  setUnderlay(host: HTMLElement | null): void
   batch(fn: () => void): void
   getStats(): VisualLinkerStats
   startConnect(from: ConnectionEndpoint): boolean
@@ -1917,6 +1926,8 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
               ...(declared?.port.className ? { className: declared.port.className } : {}),
               ...(declared?.port.style ? { style: declared.port.style } : {}),
               ...(fade < 1 ? { opacity: fade } : {}),
+              stacking:
+                blocks.get(entry.blockId)?.stacking?.ports ?? config.stacking?.ports,
             }
           })
       : []
@@ -1962,6 +1973,29 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     if (!selectable() && selectedIds.size > 0) applySelection(new Set(), true)
     setBlockList([...blocks.values()], true)
     svg.applyConfig()
+    requestRender()
+  }
+
+  function applyOffsetToBlock(id: string, offset: Point) {
+    const block = blocks.get(id)
+    if (block) applyDragTransform(block.el, offset)
+  }
+
+  function setDragOffset(id: string, offset: Point) {
+    if (!offset.x && !offset.y) {
+      dragOffsets.delete(id)
+      applyOffsetToBlock(id, { x: 0, y: 0 })
+    } else {
+      dragOffsets.set(id, { x: offset.x, y: offset.y })
+      applyOffsetToBlock(id, offset)
+    }
+    requestRender()
+  }
+
+  function resetDragOffsets() {
+    const ids = [...dragOffsets.keys()]
+    dragOffsets.clear()
+    for (const id of ids) applyOffsetToBlock(id, { x: 0, y: 0 })
     requestRender()
   }
 
@@ -2020,6 +2054,15 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
     },
     getConfig() {
       return mergeConfig<VisualLinkerConfig>(config)
+    },
+    setDragOffset(id, offset) {
+      setDragOffset(id, offset)
+    },
+    resetDragOffsets() {
+      resetDragOffsets()
+    },
+    setUnderlay(host) {
+      svg.setUnderlay(host)
     },
     refresh() {
       forgetDerived()

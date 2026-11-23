@@ -164,6 +164,11 @@ In page scope the lines are drawn in a `position: fixed` layer covering the view
 | `selected`    | `string[]`               | ids of selected connections (`v-model:selected`), needs `config.interaction.selectable`                                                                                   |
 | `zIndex`      | `number \| string`       | stacking order of the drawing layer                                                                                                                                       |
 
+`config.stacking.lines: 'under'` (container scope) inserts a second layer
+*before* the default slot so strokes paint behind your blocks, while ports and
+markers stay on the front layer. Page scope keeps a single overlay. A
+connection may override with `style.stacking`, a block with `stacking.ports`.
+
 Emits mirror the engine's own events 1:1, kebab-cased: `block-dragstart`,
 `block-drag`, `block-dragend`, `block-mouseenter`, `block-mouseleave`,
 `connection-click`, `connection-mouseenter`, `connection-mouseleave`, plus
