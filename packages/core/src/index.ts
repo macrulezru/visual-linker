@@ -5,6 +5,8 @@ export { VLConnectionCurveEnum, VLMarkerShapeEnum, VLFixedSideEnum, VLOrientEnum
 
 export { lightTheme, darkTheme, defineTheme } from './theme'
 export { mergeConfig, patchConfig, mergeMarkerInputs } from './config'
+export { resolveCollisionOption, separateBox } from './collision'
+export type { CollisionBox } from './collision'
 
 export type {
   PortSide,
@@ -50,6 +52,7 @@ export type {
   PortLayout,
   VisualLinkerEventMap,
   DragBounds,
+  CollisionOption,
   PortSpread,
   PortSpreadOptions,
   DragBoundsInset,

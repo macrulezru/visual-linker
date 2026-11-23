@@ -34,7 +34,9 @@ import {
 } from './svg-layer'
 import { createConnectController, HANDLE_MIN_RADIUS, type BlockGeometry, type HandleInfo } from './connect'
 import { mergeConfig, mergeMarkerInputs, patchConfig, resolveLines } from './config'
+import { resolveCollisionOption, separateBox, type CollisionBox } from './collision'
 import {
+  DEFAULT_BLOCK_GAP,
   DEFAULT_CORNER_RADIUS,
   DEFAULT_CURVE_TYPE,
   DEFAULT_DRAGGABLE,
@@ -843,6 +845,37 @@ export function createVisualLinker(container: HTMLElement, initialConfig: Visual
           if (dragGridSize) {
             absX = snapToGrid(absX, dragGridSize)
             absY = snapToGrid(absY, dragGridSize)
+          }
+          const movingGap = resolveCollisionOption(
+            block.collision,
+            config.blocks?.drag?.collision,
+            DEFAULT_BLOCK_GAP,
+          )
+          if (movingGap !== false) {
+            const obstacles: CollisionBox[] = []
+            for (const [id, other] of blocks) {
+              if (id === block.id) continue
+              const otherGap = resolveCollisionOption(
+                other.collision,
+                config.blocks?.drag?.collision,
+                DEFAULT_BLOCK_GAP,
+              )
+              if (otherGap === false) continue
+              const rect = other.el.getBoundingClientRect()
+              obstacles.push({
+                x: rect.left,
+                y: rect.top,
+                w: rect.width,
+                h: rect.height,
+                gap: otherGap,
+              })
+            }
+            const separated = separateBox(
+              { x: absX, y: absY, w: startRect.width, h: startRect.height, gap: movingGap },
+              obstacles,
+            )
+            absX = separated.x
+            absY = separated.y
           }
           // Resolved live (not once at drag-start) so a bounds element that
           // itself resizes/moves during the drag (or the container, on a

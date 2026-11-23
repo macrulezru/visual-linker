@@ -112,6 +112,7 @@ All three methods feed the same registry and can be mixed in one diagram.
 | `data-vl-draggable`               | block      | `""`/`"true"` → draggable, `"false"` → not               |
 | `data-vl-drag-handle=".sel"`      | block      | drag handle, a selector inside the block                 |
 | `data-vl-drag-bounds="container"` | block      | `container`, or a CSS selector of the fence element      |
+| `data-vl-collision`               | block      | `""`/`"true"` on, `"false"` off, `"20"` → `{ gap: 20 }`  |
 | `data-vl-port="id"`               | port       | registers a port on the nearest block around it          |
 | `data-vl-port-block="id"`         | port       | …or on this block explicitly                             |
 | `data-vl-side="left right"`       | port       | one side, or a space/comma-separated candidate list      |
@@ -157,7 +158,7 @@ In page scope the lines are drawn in a `position: fixed` layer covering the view
 | Prop          | Type                     |                                                                                                                                                                           |
 | ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `connections` | `ConnectionDescriptor[]` | required                                                                                                                                                                  |
-| `blocks`      | `VisualLinkerBlock[]`    | optional — `id`, `el?` (ref/getter/element/selector), `ports`, `draggable`, `dragHandle`, `dragBounds`                                                                    |
+| `blocks`      | `VisualLinkerBlock[]`    | optional — `id`, `el?` (ref/getter/element/selector), `ports`, `draggable`, `dragHandle`, `dragBounds`, `collision`                                                       |
 | `config`      | `VisualLinkerConfig`     | the diagram's configuration, reactive — merged over the shared defaults; see [`@macrulez/visual-linker-core`](https://www.npmjs.com/package/@macrulez/visual-linker-core) |
 | `scope`       | `'container' \| 'page'`  | default `'container'`                                                                                                                                                     |
 | `name`        | `string`                 | lets elements elsewhere claim this instance via `data-vl-linker` / the directives' `linker`                                                                               |
